@@ -1,0 +1,103 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-gray-950 text-gray-100 font-sans antialiased;
+    background-image: radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 60%),
+                      radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.08) 0%, transparent 60%);
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  /* Glass card */
+  .glass-card {
+    @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl;
+  }
+
+  .glass-card-hover {
+    @apply glass-card transition-all duration-300 hover:bg-white/10 hover:border-white/20 hover:shadow-lg hover:shadow-brand-500/10 hover:-translate-y-1;
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-400 to-violet-400;
+  }
+
+  /* Primary button */
+  .btn-primary {
+    @apply bg-gradient-to-r from-brand-600 to-violet-600 hover:from-brand-500 hover:to-violet-500
+           text-white font-semibold px-6 py-3 rounded-xl transition-all duration-200
+           shadow-lg shadow-brand-500/25 hover:shadow-brand-500/40 hover:scale-[1.02] active:scale-[0.98]
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100;
+  }
+
+  /* Secondary button */
+  .btn-secondary {
+    @apply bg-white/10 hover:bg-white/20 text-white font-medium px-5 py-2.5 rounded-xl
+           border border-white/20 hover:border-white/30 transition-all duration-200;
+  }
+
+  /* Form input */
+  .form-input {
+    @apply w-full bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-gray-100
+           placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50
+           focus:border-brand-500/50 transition-all duration-200;
+  }
+
+  /* Progress bar track */
+  .progress-track {
+    @apply w-full h-2.5 bg-white/10 rounded-full overflow-hidden;
+  }
+
+  /* Badge */
+  .skill-badge {
+    @apply text-xs font-medium px-2.5 py-1 rounded-full;
+  }
+
+  /* Section label */
+  .section-label {
+    @apply text-xs font-semibold uppercase tracking-widest text-gray-500;
+  }
+}
+
+/* Animated gradient background for auth pages */
+.animated-gradient {
+  background: linear-gradient(-45deg, #1e1b4b, #312e81, #1e3a5f, #0f172a, #1a0533);
+  background-size: 400% 400%;
+  animation: gradient-x 10s ease infinite;
+}
+
+@keyframes gradient-x {
+  0%, 100% { background-position: 0% 50%; }
+  50%       { background-position: 100% 50%; }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar        { width: 6px; height: 6px; }
+::-webkit-scrollbar-track  { @apply bg-gray-900; }
+::-webkit-scrollbar-thumb  { @apply bg-brand-600/60 rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-brand-500; }
+
+/* Spinner */
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255,255,255,0.2);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
