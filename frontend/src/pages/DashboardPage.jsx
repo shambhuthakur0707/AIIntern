@@ -57,7 +57,7 @@ export default function DashboardPage() {
             setMatchResult(data.data.match_result)
             if (data.data.user) updateUser(data.data.user)
         } catch (err) {
-            setError(err.response?.data?.message || 'Agent failed. Check your OpenAI API key and try again.')
+            setError(err.response?.data?.message || 'Agent failed. Check that Ollama is running and try again.')
         } finally {
             setLoading(false)
         }

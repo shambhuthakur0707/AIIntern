@@ -17,7 +17,7 @@ import ollama
 logger = logging.getLogger(__name__)
 
 # ── Config ───────────────────────────────────────────────────────────
-OLLAMA_MODEL = "llama3:8b-instruct-q4_0"
+OLLAMA_MODEL = "llama3:latest"
 MAX_PROMPT_CHARS = 3000
 MAX_RETRIES = 1
 
