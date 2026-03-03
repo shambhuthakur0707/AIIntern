@@ -8,8 +8,10 @@ stricter prompt.
 
 import json
 import logging
+import os
 import re
 import traceback
+from time import time
 from typing import Any, Dict, List, Optional
 
 import ollama
@@ -19,7 +21,13 @@ logger = logging.getLogger(__name__)
 # ── Config ───────────────────────────────────────────────────────────
 OLLAMA_MODEL = "llama3:latest"
 MAX_PROMPT_CHARS = 3000
-MAX_RETRIES = 1
+MAX_RETRIES = int(os.getenv("OLLAMA_MAX_RETRIES", "0"))
+OLLAMA_TIMEOUT_SEC = float(os.getenv("OLLAMA_TIMEOUT_SEC", "6"))
+OLLAMA_HEALTH_TTL_SEC = float(os.getenv("OLLAMA_HEALTH_TTL_SEC", "20"))
+OLLAMA_CLIENT = ollama.Client(timeout=OLLAMA_TIMEOUT_SEC)
+OLLAMA_HEALTH_CLIENT = ollama.Client(timeout=2)
+
+_OLLAMA_STATUS = {"ok": True, "checked_at": 0.0}
 
 # Keys the LLM JSON *must* contain
 REQUIRED_KEYS = {
@@ -31,6 +39,21 @@ REQUIRED_KEYS = {
     "learning_roadmap",
     "improvement_priority",
 }
+
+
+def _ollama_available() -> bool:
+    now = time()
+    if now - _OLLAMA_STATUS["checked_at"] <= OLLAMA_HEALTH_TTL_SEC:
+        return _OLLAMA_STATUS["ok"]
+
+    try:
+        OLLAMA_HEALTH_CLIENT.ps()
+        _OLLAMA_STATUS["ok"] = True
+    except Exception:
+        _OLLAMA_STATUS["ok"] = False
+        logger.warning("Ollama health-check failed. Falling back to rule-based analysis.")
+    _OLLAMA_STATUS["checked_at"] = now
+    return _OLLAMA_STATUS["ok"]
 
 
 # ── Prompt builder ───────────────────────────────────────────────────
@@ -156,6 +179,9 @@ def analyze_single(
     -------
     dict with LLM analysis fields, or None if all attempts fail.
     """
+    if not _ollama_available():
+        return None
+
     for attempt in range(MAX_RETRIES + 1):
         strict = attempt > 0
         prompt = _build_prompt(user_profile, internship, strict=strict)
@@ -167,10 +193,10 @@ def analyze_single(
                 internship.get("title", "?"),
             )
 
-            response = ollama.chat(
+            response = OLLAMA_CLIENT.chat(
                 model=OLLAMA_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                options={"num_predict": 800, "temperature": 0.3},
+                options={"num_predict": 350, "temperature": 0.3},
             )
 
             raw = response.get("message", {}).get("content", "")
@@ -193,6 +219,8 @@ def analyze_single(
             )
 
         except Exception:
+            _OLLAMA_STATUS["ok"] = False
+            _OLLAMA_STATUS["checked_at"] = time()
             logger.error(
                 "Ollama call failed for '%s' (attempt %d):\n%s",
                 internship.get("title", "?"),

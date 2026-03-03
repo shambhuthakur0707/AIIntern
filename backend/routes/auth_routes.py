@@ -1,8 +1,12 @@
 from flask import Blueprint, request, current_app
 from flask_jwt_extended import create_access_token
 import bcrypt
-from models.user_model import create_user_document, sanitize_user
-from utils.response_utils import success_response, error_response
+try:
+    from ..models.user_model import create_user_document, sanitize_user
+    from ..utils.response_utils import success_response, error_response
+except ImportError:
+    from models.user_model import create_user_document, sanitize_user
+    from utils.response_utils import success_response, error_response
 
 auth_bp = Blueprint("auth", __name__)
 

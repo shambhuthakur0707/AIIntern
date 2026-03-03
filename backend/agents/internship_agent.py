@@ -8,10 +8,36 @@ Called by the route layer via  run_matching_agent(user_profile).
 """
 
 import logging
+import sys
 import traceback
+from pathlib import Path
 from typing import Any, Dict
 
-from engines import matching_engine, ranking_engine, llm_engine, fallback_engine, response_formatter
+# Allow running this file directly: `python backend/agents/internship_agent.py`
+if __package__ in (None, ""):
+    backend_dir = Path(__file__).resolve().parents[1]
+    if str(backend_dir) not in sys.path:
+        sys.path.insert(0, str(backend_dir))
+
+try:
+    from ..engines import (
+        matching_engine,
+        ranking_engine,
+        llm_engine,
+        fallback_engine,
+        response_formatter,
+    )
+except ImportError:
+    try:
+        from backend.engines import (
+            matching_engine,
+            ranking_engine,
+            llm_engine,
+            fallback_engine,
+            response_formatter,
+        )
+    except ImportError:
+        from engines import matching_engine, ranking_engine, llm_engine, fallback_engine, response_formatter
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)

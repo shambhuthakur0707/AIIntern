@@ -9,29 +9,30 @@ function scoreColor(score) {
 
 export default function ProgressBar({ score, animated = true }) {
     const barRef = useRef(null)
+    const safeScore = Number.isFinite(Number(score)) ? Number(score) : 0
 
     useEffect(() => {
         if (!barRef.current) return
         // Start from 0, animate to score
         barRef.current.style.width = '0%'
         const t = setTimeout(() => {
-            barRef.current.style.width = `${Math.min(score, 100)}%`
+            barRef.current.style.width = `${Math.min(Math.max(safeScore, 0), 100)}%`
         }, 100)
         return () => clearTimeout(t)
-    }, [score])
+    }, [safeScore])
 
     return (
         <div className="space-y-1.5">
             <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-400 font-medium">Match Score</span>
-                <span className={`text-sm font-bold bg-gradient-to-r ${scoreColor(score)} bg-clip-text text-transparent`}>
-                    {score.toFixed(1)}%
+                <span className={`text-sm font-bold bg-gradient-to-r ${scoreColor(safeScore)} bg-clip-text text-transparent`}>
+                    {safeScore.toFixed(1)}%
                 </span>
             </div>
             <div className="progress-track">
                 <div
                     ref={barRef}
-                    className={`h-full rounded-full bg-gradient-to-r ${scoreColor(score)} transition-all duration-1000 ease-out`}
+                    className={`h-full rounded-full bg-gradient-to-r ${scoreColor(safeScore)} transition-all duration-1000 ease-out`}
                     style={{ width: '0%' }}
                 />
             </div>

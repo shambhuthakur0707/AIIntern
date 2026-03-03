@@ -54,6 +54,12 @@
            focus:border-brand-500/50 transition-all duration-200;
   }
 
+  /* Ensure native select dropdown options stay readable */
+  .form-input option {
+    color: #111827;
+    background-color: #ffffff;
+  }
+
   /* Progress bar track */
   .progress-track {
     @apply w-full h-2.5 bg-white/10 rounded-full overflow-hidden;

@@ -1,10 +1,17 @@
 from flask import Blueprint
 from flask_jwt_extended import jwt_required
-from utils.jwt_utils import get_current_user
-from utils.response_utils import success_response, error_response
-from agents.internship_agent import run_matching_agent
-from services.user_service import update_user_match_result
-from models.user_model import sanitize_user
+try:
+    from ..utils.jwt_utils import get_current_user
+    from ..utils.response_utils import success_response, error_response
+    from ..agents.internship_agent import run_matching_agent
+    from ..services.user_service import update_user_match_result
+    from ..models.user_model import sanitize_user
+except ImportError:
+    from utils.jwt_utils import get_current_user
+    from utils.response_utils import success_response, error_response
+    from agents.internship_agent import run_matching_agent
+    from services.user_service import update_user_match_result
+    from models.user_model import sanitize_user
 
 agent_bp = Blueprint("agent", __name__)
 

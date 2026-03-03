@@ -52,6 +52,7 @@ def format_response(
             "duration": rank_data.get("duration", ""),
             "location": rank_data.get("location", ""),
             "openings": rank_data.get("openings", 0),
+            "apply_url": rank_data.get("apply_url", ""),
             # ── Deterministic scores ─────────────────────────
             "weighted_score": rank_data.get("weighted_score", 0),
             "score_breakdown": rank_data.get("score_breakdown", {}),

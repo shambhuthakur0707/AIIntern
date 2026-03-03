@@ -9,6 +9,7 @@ import bcrypt
 from pymongo import MongoClient
 from dotenv import load_dotenv
 from datetime import datetime
+from urllib.parse import quote_plus
 
 load_dotenv()
 
@@ -131,6 +132,11 @@ INTERNSHIPS = [
         "openings": 2,
     },
 ]
+
+for internship in INTERNSHIPS:
+    if not internship.get("apply_url"):
+        query = f"{internship.get('title', '')} {internship.get('company', '')} internship".strip()
+        internship["apply_url"] = f"https://www.linkedin.com/jobs/search/?keywords={quote_plus(query)}"
 
 
 SAMPLE_USERS = [

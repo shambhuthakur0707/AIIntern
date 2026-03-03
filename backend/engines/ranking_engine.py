@@ -9,6 +9,7 @@ Produces a weighted score (0–100) for each internship using:
 
 import logging
 from typing import Any, Dict, List
+from urllib.parse import quote_plus
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -20,7 +21,7 @@ W_SKILL = 0.60
 W_KEYWORD = 0.20
 W_EXPERIENCE = 0.20
 
-TOP_N = 10  # Max internships forwarded to LLM layer
+TOP_N = 5  # Max internships forwarded to LLM layer (kept low for faster API responses)
 
 # ── Experience keywords ──────────────────────────────────────────────
 EXPERIENCE_KEYWORDS: Dict[str, List[str]] = {
@@ -28,6 +29,18 @@ EXPERIENCE_KEYWORDS: Dict[str, List[str]] = {
     "intermediate": ["intermediate", "mid", "associate", "analyst"],
     "advanced":     ["senior", "lead", "advanced", "expert", "principal", "staff"],
 }
+
+
+def _build_apply_url(internship: Dict[str, Any]) -> str:
+    for field in ("apply_url", "application_url", "job_url"):
+        value = str(internship.get(field, "")).strip()
+        if value:
+            return value
+
+    title = str(internship.get("title", "Internship")).strip()
+    company = str(internship.get("company", "")).strip()
+    query = " ".join(part for part in [title, company, "internship"] if part)
+    return f"https://www.linkedin.com/jobs/search/?keywords={quote_plus(query)}"
 
 
 # ── Keyword relevance (TF-IDF) ──────────────────────────────────────
@@ -137,6 +150,7 @@ def rank_internships(
             "location": intern.get("location", ""),
             "openings": intern.get("openings", 0),
             "required_skills": intern.get("required_skills", []),
+            "apply_url": _build_apply_url(intern),
             # Scores
             "weighted_score": weighted,
             "score_breakdown": {

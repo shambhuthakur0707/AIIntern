@@ -1,8 +1,12 @@
 from flask import Flask
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
-from config import Config
 from pymongo import MongoClient
+
+try:
+    from .config import Config
+except ImportError:
+    from config import Config
 
 
 def create_app():
@@ -21,13 +25,21 @@ def create_app():
     app.config["DB"] = db
 
     # Register blueprints
-    from routes.auth_routes import auth_bp
-    from routes.agent_routes import agent_bp
-    from routes.dashboard_routes import dashboard_bp
+    try:
+        from .routes.auth_routes import auth_bp
+        from .routes.agent_routes import agent_bp
+        from .routes.dashboard_routes import dashboard_bp
+        from .routes.internships_routes import internships_bp
+    except ImportError:
+        from routes.auth_routes import auth_bp
+        from routes.agent_routes import agent_bp
+        from routes.dashboard_routes import dashboard_bp
+        from routes.internships_routes import internships_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(agent_bp, url_prefix="/api/agent")
     app.register_blueprint(dashboard_bp, url_prefix="/api")
+    app.register_blueprint(internships_bp, url_prefix="/api/internships")
 
     @app.route("/api/health")
     def health():

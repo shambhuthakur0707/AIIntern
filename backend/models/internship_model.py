@@ -3,7 +3,7 @@ from datetime import datetime
 
 def create_internship_document(
     title, company, required_skills, description,
-    domain, stipend, duration, location="Remote", openings=5
+    domain, stipend, duration, location="Remote", openings=5, apply_url=""
 ):
     """
     Returns a MongoDB-ready internship document.
@@ -18,6 +18,7 @@ def create_internship_document(
         "duration": duration,       # e.g. "3 months"
         "location": location,
         "openings": openings,
+        "apply_url": apply_url,
         "created_at": datetime.utcnow(),
     }
 
@@ -36,4 +37,5 @@ def sanitize_internship(doc):
         "duration": doc.get("duration"),
         "location": doc.get("location"),
         "openings": doc.get("openings"),
+        "apply_url": doc.get("apply_url"),
     }
