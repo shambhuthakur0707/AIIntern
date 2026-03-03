@@ -85,19 +85,28 @@ def run_matching_agent(user_profile: Dict[str, Any]) -> Dict[str, Any]:
         # ── 3. LLM / Fallback analysis (per internship) ─────────
         analyses = []
         for internship in ranked:
-            llm_result = llm_engine.analyze_single(user_profile, internship)
+            llm_result, fallback_reason = llm_engine.analyze_single(
+                user_profile, internship
+            )
 
             if llm_result is not None:
                 analyses.append(llm_result)
             else:
-                fb = fallback_engine.generate_fallback(user_profile, internship)
+                logger.warning(
+                    "Using rule-based fallback for '%s'. Reason: %s",
+                    internship.get("title", "unknown"),
+                    fallback_reason,
+                )
+                fb = fallback_engine.generate_fallback(
+                    user_profile, internship, fallback_reason=fallback_reason
+                )
                 analyses.append(fb)
 
         # ── 4. Format response ───────────────────────────────────
         result = response_formatter.format_response(
             ranked_results=ranked,
             llm_analyses=analyses,
-            model_used=llm_engine.OLLAMA_MODEL,
+            model_used=llm_engine.ACTIVE_MODEL,
             total_fetched=total_fetched,
             passed_filter=len(filtered),
         )

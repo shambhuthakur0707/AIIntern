@@ -1,3 +1,4 @@
+from datetime import timedelta
 from flask import Flask
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
@@ -12,6 +13,7 @@ except ImportError:
 def create_app():
     app = Flask(__name__)
     app.config["JWT_SECRET_KEY"] = Config.JWT_SECRET_KEY
+    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
 
     # Extensions
     JWTManager(app)

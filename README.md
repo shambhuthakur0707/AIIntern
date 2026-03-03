@@ -18,15 +18,19 @@ It combines deterministic ranking logic with local LLM analysis to produce top i
    - 60% skill overlap
    - 20% keyword relevance (TF-IDF + cosine similarity)
    - 20% experience-level match
-3. `llm_engine`: analyze each top internship with Ollama strict JSON output.
-4. `fallback_engine`: deterministic reasoning/roadmap when LLM is unavailable or invalid.
+3. `llm_engine`: analyse each top internship with the configured LLM provider (Ollama **or** Groq), enforcing strict JSON output.
+4. `fallback_engine`: deterministic reasoning/roadmap when LLM is unavailable or returns invalid JSON. Returns an explicit `fallback_reason` so the cause is visible in the API response.
 5. `response_formatter`: merges ranking + analysis into final API response.
 
 ## Models used
 
 ### LLM
-- Ollama model: `llama3:latest`
-- Used for per-internship reasoning, confidence score, skill-gap analysis, and learning roadmap.
+The provider is selected at startup via the `LLM_PROVIDER` env var.
+
+| `LLM_PROVIDER` | Default model | Notes |
+|---|---|---|
+| `ollama` (default) | `llama3:latest` | Runs locally; no API key needed. Override with `OLLAMA_MODEL`. |
+| `groq` | `llama3-8b-8192` | Cloud API; requires `GROQ_API_KEY`. Override with `GROQ_MODEL`. |
 
 ### ML/NLP scoring
 - `TfidfVectorizer` + `cosine_similarity` (scikit-learn)
@@ -94,6 +98,62 @@ FLASK_PORT=5000
 FLASK_DEBUG=True
 ```
 
+### LLM provider setup
+
+Choose **one** of the following providers and add the relevant variables to `.env`.
+
+#### Option A — Ollama (local, default)
+
+1. Install Ollama: https://ollama.com/download
+2. Pull the model:
+
+   ```bash
+   ollama pull llama3:latest
+   ```
+
+3. Add to `.env`:
+
+   ```env
+   LLM_PROVIDER=ollama
+   OLLAMA_MODEL=llama3:latest      # optional, this is the default
+   OLLAMA_TIMEOUT_SEC=30           # seconds before a single call times out
+   OLLAMA_HEALTH_TTL_SEC=20        # seconds between availability re-checks
+   LLM_MAX_RETRIES=1               # extra retries on JSON parse failure
+   ```
+
+4. Make sure the Ollama daemon is running before starting the backend:
+
+   ```bash
+   ollama serve
+   ```
+
+5. Install the Python client (already in `requirements.txt`):
+
+   ```bash
+   pip install ollama
+   ```
+
+#### Option B — Groq (cloud)
+
+1. Sign up at https://console.groq.com and create an API key.
+2. Add to `.env`:
+
+   ```env
+   LLM_PROVIDER=groq
+   GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
+   GROQ_MODEL=llama3-8b-8192       # optional, this is the default
+   GROQ_TIMEOUT_SEC=30             # seconds before a single call times out
+   LLM_MAX_RETRIES=1               # extra retries on JSON parse failure
+   ```
+
+3. Install the Groq Python client:
+
+   ```bash
+   pip install groq
+   ```
+
+> **Fallback behaviour**: if the selected provider is unreachable or returns invalid JSON after all retries, the rule-based `fallback_engine` is used automatically. The `fallback_reason` field in each recommendation explains why.
+
 Seed sample data:
 
 ```bash
@@ -138,6 +198,6 @@ Frontend URL: `http://localhost:5173`
 
 ## Notes
 
-- Runtime analysis currently uses Ollama (`llama3:latest`), not GPT-4o.
+- The active LLM provider is controlled by `LLM_PROVIDER` in `.env` (`ollama` or `groq`).
 - LangChain tool classes exist in `backend/tools/`, but the active orchestration path is the custom engine pipeline in `backend/engines/`.
-- If Ollama is down or returns invalid JSON, fallback output is still returned so the API remains usable.
+- If the LLM provider is down or returns invalid JSON after all retries, the rule-based fallback engine is used automatically. Every recommendation includes a `fallback_used` boolean and a `fallback_reason` string so clients know which engine produced the analysis.

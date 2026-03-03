@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Navbar from '../components/Navbar'
 import api from '../api/axios'
 import RoadmapTimeline from '../components/RoadmapTimeline'
+import { InternshipListSkeleton } from '../components/Skeleton'
 
 const DEFAULT_FILTERS = {
     sector: '',
@@ -233,7 +234,11 @@ export default function InternshipsPage() {
                 </section>
 
                 {loading && (
-                    <section className="glass-card p-8 text-center text-gray-400">Loading internships...</section>
+                    <section className="space-y-4">
+                        {Array.from({ length: 3 }).map((_, i) => (
+                            <InternshipListSkeleton key={i} />
+                        ))}
+                    </section>
                 )}
 
                 {!loading && error && (
@@ -243,9 +248,17 @@ export default function InternshipsPage() {
                 )}
 
                 {!loading && !error && internships.length === 0 && (
-                    <section className="glass-card p-10 text-center">
-                        <h2 className="text-white text-lg font-semibold">No internships found</h2>
-                        <p className="text-gray-400 text-sm mt-2">Try changing filters or reset them.</p>
+                    <section className="glass-card p-12 text-center animate-fade-in">
+                        <div className="text-5xl mb-4">🔍</div>
+                        <h2 className="text-white text-lg font-semibold mb-2">No internships found</h2>
+                        <p className="text-gray-400 text-sm mb-5">No results match your current filters.</p>
+                        <button
+                            type="button"
+                            onClick={resetFilters}
+                            className="btn-secondary !py-2 !px-5 text-sm"
+                        >
+                            Clear all filters
+                        </button>
                     </section>
                 )}
 

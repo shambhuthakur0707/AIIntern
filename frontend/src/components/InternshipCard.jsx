@@ -5,6 +5,19 @@ import RoadmapTimeline from './RoadmapTimeline'
 
 export default function InternshipCard({ rec, index }) {
     const [expanded, setExpanded] = useState(false)
+    const [copied, setCopied] = useState(false)
+
+    const copyRoadmap = () => {
+        const roadmap = rec.roadmap ?? rec.learning_roadmap ?? []
+        if (!roadmap.length) return
+        const text = roadmap.map((step, i) =>
+            `Week ${step.week ?? i + 1}: ${step.focus ?? ''}\n` +
+            (Array.isArray(step.tasks) ? step.tasks.map((t) => `  • ${t}`).join('\n') : '')
+        ).join('\n\n')
+        navigator.clipboard.writeText(`${rec.title ?? rec.internship_title} — Learning Roadmap\n\n${text}`)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+    }
 
     const rank = rec.rank ?? index + 1
     const title = rec.internship_title ?? rec.title ?? 'Untitled'
@@ -30,7 +43,7 @@ export default function InternshipCard({ rec, index }) {
                     </div>
                     <div>
                         <h3 className="font-bold text-white text-base leading-tight">{title}</h3>
-                        <p className="text-sm text-gray-400">{rec.company} � <span className="text-brand-400">{rec.domain}</span></p>
+                        <p className="text-sm text-gray-400">{rec.company} � <span className="text-brand-400">{rec.domain}</span></p>
                     </div>
                 </div>
                 {/* Meta */}
@@ -82,18 +95,29 @@ export default function InternshipCard({ rec, index }) {
             )}
 
             {/* Expandable roadmap */}
-            <button
-                onClick={() => setExpanded((e) => !e)}
-                className="w-full text-left"
-                id={`roadmap-toggle-${index}`}
-            >
-                <div className="flex items-center justify-between text-sm font-medium text-gray-400 hover:text-white transition-colors">
-                    <span>Learning Roadmap ({rec.total_learning_weeks ?? roadmap.length ?? 0} weeks)</span>
-                    <svg className={`w-4 h-4 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                </div>
-            </button>
+            <div className="flex items-center justify-between gap-2">
+                <button
+                    onClick={() => setExpanded((e) => !e)}
+                    className="flex-1 text-left"
+                    id={`roadmap-toggle-${index}`}
+                >
+                    <div className="flex items-center justify-between text-sm font-medium text-gray-400 hover:text-white transition-colors">
+                        <span>Learning Roadmap ({rec.total_learning_weeks ?? roadmap.length ?? 0} weeks)</span>
+                        <svg className={`w-4 h-4 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </div>
+                </button>
+                {roadmap.length > 0 && (
+                    <button
+                        onClick={copyRoadmap}
+                        title="Copy roadmap to clipboard"
+                        className="flex-shrink-0 text-xs text-gray-500 hover:text-brand-400 border border-white/10 hover:border-brand-500/30 px-2 py-1 rounded-lg transition-colors"
+                    >
+                        {copied ? '✓ Copied' : '⎘ Copy'}
+                    </button>
+                )}
+            </div>
 
             {expanded && (
                 <div className="pt-2 animate-fade-in">

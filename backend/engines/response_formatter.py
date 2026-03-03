@@ -66,6 +66,7 @@ def format_response(
             "learning_roadmap": analysis.get("learning_roadmap", []),
             "improvement_priority": analysis.get("improvement_priority", ""),
             "fallback_used": analysis.get("fallback_used", False),
+            "fallback_reason": analysis.get("fallback_reason", ""),
         }
         recommendations.append(rec)
 

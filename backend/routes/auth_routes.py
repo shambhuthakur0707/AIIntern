@@ -1,5 +1,6 @@
 from flask import Blueprint, request, current_app
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from bson import ObjectId
 import bcrypt
 try:
     from ..models.user_model import create_user_document, sanitize_user
@@ -87,3 +88,36 @@ def login():
         data={"token": token, "user": sanitize_user(user)},
         message="Login successful",
     )
+
+
+@auth_bp.route("/me", methods=["GET"])
+@jwt_required()
+def get_me():
+    user_id = get_jwt_identity()
+    db = current_app.config["DB"]
+    user = db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        return error_response("User not found", 404)
+    return success_response(data={"user": sanitize_user(user)})
+
+
+@auth_bp.route("/profile", methods=["PUT"])
+@jwt_required()
+def update_profile():
+    user_id = get_jwt_identity()
+    db = current_app.config["DB"]
+    data = request.get_json() or {}
+
+    allowed = [
+        "name", "education", "experience_level",
+        "linkedin_url", "github_url", "portfolio_url",
+        "location", "bio", "skills", "interests",
+    ]
+    updates = {k: v for k, v in data.items() if k in allowed}
+
+    if not updates:
+        return error_response("No valid fields to update", 400)
+
+    db.users.update_one({"_id": ObjectId(user_id)}, {"$set": updates})
+    user = db.users.find_one({"_id": ObjectId(user_id)})
+    return success_response(data={"user": sanitize_user(user)}, message="Profile updated")

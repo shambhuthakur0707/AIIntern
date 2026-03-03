@@ -60,6 +60,7 @@ def _get_resource(skill: str) -> Dict[str, Any]:
 def generate_fallback(
     user_profile: Dict[str, Any],
     internship: Dict[str, Any],
+    fallback_reason: str = "",
 ) -> Dict[str, Any]:
     """
     Generate a complete analysis result using deterministic logic.
@@ -68,13 +69,14 @@ def generate_fallback(
 
     Parameters
     ----------
-    user_profile : dict with skills, experience_level, etc.
-    internship   : dict from ranking_engine (has weighted_score,
-                   matched_skills, missing_skills, etc.)
+    user_profile    : dict with skills, experience_level, etc.
+    internship      : dict from ranking_engine (has weighted_score,
+                      matched_skills, missing_skills, etc.)
+    fallback_reason : human-readable explanation of why LLM was not used.
 
     Returns
     -------
-    dict matching the LLM JSON schema + fallback_used=True
+    dict matching the LLM JSON schema + fallback_used=True + fallback_reason
     """
     matched = internship.get("matched_skills", [])
     missing = internship.get("missing_skills", [])
@@ -153,6 +155,8 @@ def generate_fallback(
         )
 
     logger.info("Generated fallback for '%s'", title)
+    if fallback_reason:
+        logger.debug("Fallback reason for '%s': %s", title, fallback_reason)
 
     return {
         "confidence_score": confidence,
@@ -163,4 +167,5 @@ def generate_fallback(
         "learning_roadmap": roadmap,
         "improvement_priority": improvement_priority,
         "fallback_used": True,
+        "fallback_reason": fallback_reason,
     }

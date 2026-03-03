@@ -192,9 +192,11 @@ def list_internships():
 
             if include_ai:
                 scored = _score_for_user(user_profile, internship)
-                analysis = llm_engine.analyze_single(user_profile, scored)
-                if analysis is None:
-                    analysis = fallback_engine.generate_fallback(user_profile, scored)
+                llm_result, fallback_reason = llm_engine.analyze_single(user_profile, scored)
+                if llm_result is None:
+                    analysis = fallback_engine.generate_fallback(user_profile, scored, fallback_reason)
+                else:
+                    analysis = llm_result
                 if analysis.get("fallback_used"):
                     fallback_count += 1
                 analyzed_count += 1
