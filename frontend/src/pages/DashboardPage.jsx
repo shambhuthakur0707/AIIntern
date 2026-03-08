@@ -1,4 +1,4 @@
-?import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import Navbar from '../components/Navbar'
 import api from '../api/axios'

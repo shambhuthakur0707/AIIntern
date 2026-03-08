@@ -32,16 +32,26 @@ def create_app():
         from .routes.agent_routes import agent_bp
         from .routes.dashboard_routes import dashboard_bp
         from .routes.internships_routes import internships_bp
+        from .routes.scraper_routes import scraper_bp
     except ImportError:
         from routes.auth_routes import auth_bp
         from routes.agent_routes import agent_bp
         from routes.dashboard_routes import dashboard_bp
         from routes.internships_routes import internships_bp
+        from routes.scraper_routes import scraper_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(agent_bp, url_prefix="/api/agent")
     app.register_blueprint(dashboard_bp, url_prefix="/api")
     app.register_blueprint(internships_bp, url_prefix="/api/internships")
+    app.register_blueprint(scraper_bp, url_prefix="/api/scraper")
+
+    # Start the background internship scraper scheduler
+    try:
+        from .scrapers.scheduler import init_scheduler
+    except ImportError:
+        from scrapers.scheduler import init_scheduler
+    init_scheduler(app, interval_hours=Config.SCRAPER_INTERVAL_HOURS)
 
     @app.route("/api/health")
     def health():

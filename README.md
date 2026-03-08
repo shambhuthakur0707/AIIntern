@@ -1,94 +1,305 @@
-# AIIntern - Agentic Internship Matcher
+# AIIntern — Agentic AI Internship Recommendation System
 
-AIIntern is a full-stack internship recommendation system.
-It combines deterministic ranking logic with local LLM analysis to produce top internship matches, reasoning, skill gaps, and a learning roadmap.
+AIIntern is a full-stack, AI-powered internship recommendation platform that automatically discovers internships from external job platforms, matches students to relevant opportunities using a multi-stage agentic pipeline, and generates personalised learning roadmaps to close skill gaps.
 
-## What the project does
+---
 
-- Auth: user registration and login with JWT.
-- Profile: stores skills, interests, experience level, and education.
-- Matching pipeline: filters internships by skill overlap, ranks them, then enriches results with AI reasoning.
-- Dashboard: returns user data and last saved matching result.
-- Profile import: extracts skills/interests from CV text and profile links.
+## Features
 
-## Current backend pipeline (actual code)
+### 1. Automated Internship Scraping
 
-1. `matching_engine`: fetch internships from MongoDB and filter below 25% skill overlap.
-2. `ranking_engine`: compute weighted score:
-   - 60% skill overlap
-   - 20% keyword relevance (TF-IDF + cosine similarity)
-   - 20% experience-level match
-3. `llm_engine`: analyse each top internship with the configured LLM provider (Ollama **or** Groq), enforcing strict JSON output.
-4. `fallback_engine`: deterministic reasoning/roadmap when LLM is unavailable or returns invalid JSON. Returns an explicit `fallback_reason` so the cause is visible in the API response.
-5. `response_formatter`: merges ranking + analysis into final API response.
+A background scheduler fetches live internship listings every 6 hours (configurable) from multiple external platforms and stores them in MongoDB, de-duplicated by `apply_url`.
 
-## Models used
-
-### LLM
-The provider is selected at startup via the `LLM_PROVIDER` env var.
-
-| `LLM_PROVIDER` | Default model | Notes |
+| Data source | What it covers | API key required? |
 |---|---|---|
-| `ollama` (default) | `llama3:latest` | Runs locally; no API key needed. Override with `OLLAMA_MODEL`. |
-| `groq` | `llama3-8b-8192` | Cloud API; requires `GROQ_API_KEY`. Override with `GROQ_MODEL`. |
+| **JSearch** (RapidAPI) | LinkedIn, Indeed, Glassdoor, ZipRecruiter | Yes — free tier 200 req/month |
+| **Remotive** | Remote tech internships (6 categories) | No — completely free |
+| **Adzuna** | Global job boards across 7 countries (US, GB, IN, AU, CA, DE, FR) | Yes — free tier 250 req/month |
 
-### ML/NLP scoring
-- `TfidfVectorizer` + `cosine_similarity` (scikit-learn)
-- Used for keyword relevance scoring between user interests and internship text.
+- **Internship-only filtering** — API-level params (`employment_types=INTERN`, search terms contain "internship") **plus** a code-level guard that checks every listing for intern/trainee/apprentice/co-op markers.
+- Skill extraction from descriptions (50+ recognised tech skills).
+- Domain inference (ML, Web Dev, DevOps, Cloud, Cybersecurity, etc.).
+- Manual trigger via `POST /api/scraper/trigger` and status check via `GET /api/scraper/status`.
 
-### Rule-based fallback
-- Deterministic fallback engine with curated resource map for roadmap generation.
+### 2. Agentic AI Matching Pipeline
 
-## Tech stack
+When a user clicks **"Run AI Agent"** the backend orchestrates a multi-step pipeline:
 
-- Frontend: React + Vite + Tailwind
-- Backend: Flask + Flask-JWT-Extended + Flask-CORS
-- Database: MongoDB (PyMongo)
-- LLM runtime: Ollama (local)
-- Ranking/ML: scikit-learn
-- Auth/security: bcrypt + JWT
-
-## Project structure
-
-```text
-AIIntern/
-|- backend/
-|  |- app.py
-|  |- config.py
-|  |- seed.py
-|  |- requirements.txt
-|  |- agents/
-|  |  |- internship_agent.py
-|  |- engines/
-|  |  |- matching_engine.py
-|  |  |- ranking_engine.py
-|  |  |- llm_engine.py
-|  |  |- fallback_engine.py
-|  |  |- response_formatter.py
-|  |- routes/
-|  |  |- auth_routes.py
-|  |  |- agent_routes.py
-|  |  |- dashboard_routes.py
-|  |- services/
-|  |  |- profile_import_service.py
-|  |- models/
-|  |- utils/
-|- frontend/
-|  |- src/
 ```
+User Profile
+     │
+     ▼
+┌─────────────────────────┐
+│  1. Matching Engine      │  Filter internships with ≥25% skill overlap
+└────────────┬────────────┘
+             ▼
+┌─────────────────────────┐
+│  2. Ranking Engine       │  Weighted scoring (60% skills, 20% keywords, 20% experience)
+└────────────┬────────────┘
+             ▼
+┌─────────────────────────┐
+│  3. LLM Engine           │  Per-internship AI analysis with strict JSON output
+│     ↓ on failure         │
+│  3b. Fallback Engine     │  Rule-based deterministic analysis
+└────────────┬────────────┘
+             ▼
+┌─────────────────────────┐
+│  4. Response Formatter   │  Merges ranking + analysis → final API response
+└─────────────────────────┘
+```
+
+Each recommendation includes:
+- **Confidence score** — how well the student fits
+- **Reasoning** — natural-language explanation
+- **Matched & missing skills**
+- **Skill gap analysis**
+- **4-week learning roadmap** with curated resources
+- **Improvement priority** — what to learn first
+
+### 3. Multi-Provider LLM Support
+
+| Provider | Default model | Notes |
+|---|---|---|
+| **Ollama** (default) | `llama3:latest` | Runs locally, no API key needed. Override with `OLLAMA_MODEL`. |
+| **Groq** (cloud) | `llama3-8b-8192` | Requires `GROQ_API_KEY`. Override with `GROQ_MODEL`. |
+
+- Strict JSON schema enforcement with retry logic.
+- Health checks and timeout handling per provider.
+- Automatic fallback to the rule-based engine if the LLM is down, with transparent `fallback_used` / `fallback_reason` flags.
+
+### 4. ML / NLP Scoring
+
+| Technique | Library | Usage |
+|---|---|---|
+| **TF-IDF Vectorization** | scikit-learn `TfidfVectorizer` | Converts user interests and internship text into feature vectors |
+| **Cosine Similarity** | scikit-learn `cosine_similarity` | Computes keyword relevance score between user and internship |
+| **Set Intersection** | Python builtins | Case-insensitive skill overlap percentage |
+
+### 5. Rule-Based Fallback Engine
+
+When the LLM is unavailable or returns invalid JSON:
+- Generates the same JSON schema deterministically.
+- Maps 50+ skills to curated learning resources with estimated time.
+- Produces a 4-week roadmap with weekly focus areas and tasks.
+- Marks output with `fallback_used: true` so the frontend can display the source.
+
+### 6. Profile Import (NLP Skill Extraction)
+
+Users can import their profile from:
+- **CV / Resume** — upload `.txt`, `.md`, or `.rtf` files
+- **LinkedIn URL** — parsed for skill mentions
+- **GitHub URL** — parsed for tech stack indicators
+
+Uses regex-based NLP matching against a dynamic skill catalogue (base skills + all internship requirements from DB).
+
+### 7. User Authentication & Profiles
+
+- JWT-based auth with 24-hour token expiry.
+- Password hashing with bcrypt.
+- Profile fields: skills, interests, education, experience level, LinkedIn/GitHub URLs, bio, location.
+- Dynamic skill management (add/remove individual skills).
+
+### 8. Internship Browsing & Filtering
+
+- **Filter by**: sector, domain, location.
+- **Pagination**: configurable page size.
+- **AI-enriched listings**: each internship optionally includes match score, reasoning, and roadmap.
+- **Sector derivation**: automatically maps domains to broader sectors (e.g. "Machine Learning" → "Artificial Intelligence").
+- **Apply URL generation**: uses the original link or generates a LinkedIn search fallback.
+
+### 9. Interactive Dashboard
+
+- **Match results** with animated confidence arcs (SVG circular progress).
+- **Skills gap chart** (Recharts bar chart) comparing market demand vs user skills.
+- **Match history** persisted in localStorage.
+- **Onboarding wizard** (3-step modal) for new users with no skills set.
+- **Profile import** from CV/LinkedIn/GitHub directly from the dashboard.
+
+### 10. Modern Frontend UI
+
+- **Glass morphism** design with animated gradient backgrounds.
+- **Responsive** — full mobile support with hamburger navigation.
+- **Toast notifications** (success, error, info, warning) with auto-dismiss.
+- **Skeleton loading** states for every data-fetching view.
+- **Copy-to-clipboard** for learning roadmaps.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Frontend** | React 18, React Router 6, Recharts, Axios |
+| **Build tools** | Vite 5, Tailwind CSS 3, PostCSS, Autoprefixer |
+| **Backend** | Flask, Flask-JWT-Extended, Flask-CORS |
+| **Database** | MongoDB (PyMongo) |
+| **LLM runtime** | Ollama (local) / Groq (cloud) |
+| **ML / NLP** | scikit-learn (TF-IDF, cosine similarity) |
+| **Job scraping** | Requests, APScheduler |
+| **Auth / Security** | bcrypt, JWT |
+| **LangChain tools** | BaseTool wrappers (db_tool, skill_match_tool, skill_gap_tool) |
+
+---
+
+## Project Structure
+
+```
+AIIntern/
+├── backend/
+│   ├── app.py                      # Flask application factory
+│   ├── config.py                   # Environment configuration
+│   ├── seed.py                     # Database seeder (10 internships, 2 users)
+│   ├── requirements.txt
+│   ├── .env.example
+│   ├── agents/
+│   │   └── internship_agent.py     # Main matching pipeline orchestrator
+│   ├── engines/
+│   │   ├── matching_engine.py      # Skill overlap filtering (≥25%)
+│   │   ├── ranking_engine.py       # Weighted multi-factor scoring
+│   │   ├── llm_engine.py           # Ollama / Groq LLM integration
+│   │   ├── fallback_engine.py      # Rule-based deterministic fallback
+│   │   └── response_formatter.py   # Final API response assembly
+│   ├── models/
+│   │   ├── user_model.py           # User document schema
+│   │   └── internship_model.py     # Internship document schema
+│   ├── routes/
+│   │   ├── auth_routes.py          # Register, login, profile update
+│   │   ├── agent_routes.py         # AI matching endpoint
+│   │   ├── dashboard_routes.py     # Dashboard + skill management
+│   │   ├── internships_routes.py   # Browse & filter internships
+│   │   └── scraper_routes.py       # Trigger scraper / check status
+│   ├── scrapers/
+│   │   ├── scheduler.py            # APScheduler background job
+│   │   ├── jsearch_scraper.py      # JSearch API (LinkedIn, Indeed, etc.)
+│   │   ├── remotive_scraper.py     # Remotive API (free, remote jobs)
+│   │   └── adzuna_scraper.py       # Adzuna API (7 countries)
+│   ├── services/
+│   │   ├── user_service.py         # User CRUD operations
+│   │   ├── profile_import_service.py  # NLP skill extraction
+│   │   └── matching_service.py     # Matching service stub
+│   ├── tools/
+│   │   ├── db_tool.py              # LangChain FetchInternshipsTool
+│   │   ├── skill_match_tool.py     # LangChain SkillMatchTool (TF-IDF)
+│   │   └── skill_gap_tool.py       # LangChain SkillGapAnalysisTool
+│   └── utils/
+│       ├── jwt_utils.py            # JWT identity extraction
+│       └── response_utils.py       # JSON response wrappers
+├── frontend/
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.js              # Dev server on :5173, proxy /api → :5000
+│   ├── tailwind.config.js          # Custom brand palette + animations
+│   ├── postcss.config.js
+│   └── src/
+│       ├── App.jsx                 # Route definitions
+│       ├── main.jsx                # React entry point
+│       ├── index.css               # Tailwind + custom glass-card styles
+│       ├── api/
+│       │   └── axios.js            # Axios instance with JWT interceptor
+│       ├── context/
+│       │   ├── AuthContext.jsx      # JWT + user state management
+│       │   └── ToastContext.jsx     # Toast notification system
+│       ├── components/
+│       │   ├── InternshipCard.jsx   # AI-enriched recommendation card
+│       │   ├── Navbar.jsx           # Responsive navigation bar
+│       │   ├── OnboardingWizard.jsx # 3-step new-user onboarding
+│       │   ├── ProgressBar.jsx      # Animated score progress bar
+│       │   ├── RoadmapTimeline.jsx  # 4-week learning roadmap visual
+│       │   ├── Skeleton.jsx         # Loading skeleton components
+│       │   └── SkillBadge.jsx       # Coloured skill pill badge
+│       └── pages/
+│           ├── DashboardPage.jsx    # Main hub with charts & agent trigger
+│           ├── InternshipsPage.jsx  # Browse, filter, paginate internships
+│           ├── ProfilePage.jsx      # Edit user profile
+│           ├── LoginPage.jsx        # Login form
+│           └── RegisterPage.jsx     # Registration with skill input
+└── README.md
+```
+
+---
+
+## Database Schema (MongoDB)
+
+### `users` collection
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Full name |
+| `email` | string | Unique, lowercased |
+| `password_hash` | string | bcrypt hash |
+| `skills` | string[] | User's technical skills |
+| `interests` | string[] | Domains of interest |
+| `experience_level` | string | beginner / intermediate / advanced |
+| `education` | string | Degree or current education |
+| `linkedin_url` | string | LinkedIn profile link |
+| `github_url` | string | GitHub profile link |
+| `resume` | string | Uploaded resume filename |
+| `last_match_result` | object | Persisted AI agent output |
+| `created_at` / `updated_at` | datetime | Timestamps |
+
+### `internships` collection
+
+| Field | Type | Description |
+|---|---|---|
+| `title` | string | Position title |
+| `company` | string | Company name |
+| `required_skills` | string[] | Skills needed |
+| `description` | string | Full description (up to 1200 chars from scrapers) |
+| `domain` | string | e.g. Machine Learning, Web Development |
+| `stipend` | string | e.g. "$1,200/month" or "Not disclosed" |
+| `duration` | string | e.g. "3 months" |
+| `location` | string | e.g. "Bangalore, India" or "Remote" |
+| `openings` | int | Number of positions |
+| `apply_url` | string | Direct application link |
+| `source` | string | "seed", "jsearch", "remotive", or "adzuna" |
+| `scraped_at` | datetime | When the scraper fetched this listing |
+| `created_at` | datetime | First insertion time |
+
+### `scraper_meta` collection
+
+| Field | Type | Description |
+|---|---|---|
+| `_id` | string | Always `"last_run"` |
+| `run_at` | datetime | When the last scrape completed |
+| `total_inserted` | int | New internships added |
+| `total_updated` | int | Existing internships refreshed |
+| `errors` | string[] | Any scraper errors from the run |
+
+---
+
+## API Endpoints
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | — | Create a new user account |
+| `POST` | `/api/auth/login` | — | Login and receive JWT |
+| `GET` | `/api/auth/me` | JWT | Get current user profile |
+| `PUT` | `/api/auth/profile` | JWT | Update user profile fields |
+| `POST` | `/api/agent/match` | JWT | Run the AI matching pipeline |
+| `GET` | `/api/dashboard` | JWT | Dashboard data + last match result |
+| `PATCH` | `/api/profile/skills/add` | JWT | Add a skill to user profile |
+| `PATCH` | `/api/profile/skills/remove` | JWT | Remove a skill from user profile |
+| `POST` | `/api/profile/import` | JWT | Import skills from CV / LinkedIn / GitHub |
+| `GET` | `/api/internships` | JWT | Browse & filter internships (paginated) |
+| `POST` | `/api/scraper/trigger` | JWT | Manually trigger a scraper run |
+| `GET` | `/api/scraper/status` | JWT | Scraper scheduler & last-run status |
+| `GET` | `/api/health` | — | Health check |
+
+---
 
 ## Setup
 
-## 1) Backend
+### 1) Backend
 
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # macOS / Linux
 pip install -r requirements.txt
 ```
 
-Create `.env` from `.env.example` and set at least:
+Create a `.env` file from `.env.example` and set at least:
 
 ```env
 MONGO_URI=mongodb://localhost:27017/
@@ -98,9 +309,9 @@ FLASK_PORT=5000
 FLASK_DEBUG=True
 ```
 
-### LLM provider setup
+### LLM Provider Setup
 
-Choose **one** of the following providers and add the relevant variables to `.env`.
+Choose **one** of the following and add the relevant variables to `.env`.
 
 #### Option A — Ollama (local, default)
 
@@ -116,21 +327,15 @@ Choose **one** of the following providers and add the relevant variables to `.en
    ```env
    LLM_PROVIDER=ollama
    OLLAMA_MODEL=llama3:latest      # optional, this is the default
-   OLLAMA_TIMEOUT_SEC=30           # seconds before a single call times out
-   OLLAMA_HEALTH_TTL_SEC=20        # seconds between availability re-checks
-   LLM_MAX_RETRIES=1               # extra retries on JSON parse failure
+   OLLAMA_TIMEOUT_SEC=30
+   OLLAMA_HEALTH_TTL_SEC=20
+   LLM_MAX_RETRIES=1
    ```
 
-4. Make sure the Ollama daemon is running before starting the backend:
+4. Start the Ollama daemon:
 
    ```bash
    ollama serve
-   ```
-
-5. Install the Python client (already in `requirements.txt`):
-
-   ```bash
-   pip install ollama
    ```
 
 #### Option B — Groq (cloud)
@@ -142,62 +347,67 @@ Choose **one** of the following providers and add the relevant variables to `.en
    LLM_PROVIDER=groq
    GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
    GROQ_MODEL=llama3-8b-8192       # optional, this is the default
-   GROQ_TIMEOUT_SEC=30             # seconds before a single call times out
-   LLM_MAX_RETRIES=1               # extra retries on JSON parse failure
+   GROQ_TIMEOUT_SEC=30
+   LLM_MAX_RETRIES=1
    ```
 
-3. Install the Groq Python client:
+> **Fallback behaviour**: if the LLM is unreachable or returns invalid JSON after retries, the rule-based `fallback_engine` kicks in automatically. Every recommendation includes `fallback_used` (boolean) and `fallback_reason` (string) so the cause is always visible.
 
-   ```bash
-   pip install groq
-   ```
+### Internship Scraper Setup (optional but recommended)
 
-> **Fallback behaviour**: if the selected provider is unreachable or returns invalid JSON after all retries, the rule-based `fallback_engine` is used automatically. The `fallback_reason` field in each recommendation explains why.
+The Remotive scraper works instantly with **no API key**. To also pull from LinkedIn / Indeed / Glassdoor / Adzuna, add:
 
-Seed sample data:
+```env
+# JSearch (RapidAPI) — sign up free at https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch
+JSEARCH_API_KEY=your-rapidapi-key
 
-```bash
-python seed.py
+# Adzuna — sign up free at https://developer.adzuna.com/
+ADZUNA_APP_ID=your-app-id
+ADZUNA_API_KEY=your-api-key
+
+# Scrape interval (default: every 6 hours)
+SCRAPER_INTERVAL_HOURS=6
 ```
 
-Run backend:
+### Seed & Run
 
 ```bash
-python app.py
+python seed.py       # populate 10 sample internships + 2 demo users
+python app.py        # start backend at http://localhost:5000
 ```
 
-Backend URL: `http://localhost:5000`
+Demo login: `aryan@example.com` / `password123`
 
-## 2) Frontend
+### 2) Frontend
 
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev          # starts at http://localhost:5173
 ```
 
-Frontend URL: `http://localhost:5173`
+The Vite dev server proxies `/api` requests to the Flask backend on port 5000.
 
-## API overview
+---
 
-### Auth
-- `POST /api/auth/register`
-- `POST /api/auth/login`
+## Models & Algorithms Summary
 
-### Agent
-- `POST /api/agent/match` (JWT required)
+| Component | Model / Algorithm | Purpose |
+|---|---|---|
+| **LLM Analysis** | Llama 3 (via Ollama or Groq) | Per-internship reasoning, skill gap analysis, learning roadmap |
+| **Keyword Relevance** | TF-IDF + Cosine Similarity (scikit-learn) | Score how well user interests match internship text |
+| **Skill Overlap** | Set Intersection | Percentage of required skills the user already has |
+| **Experience Matching** | Keyword-based heuristic | Maps beginner/intermediate/advanced to job requirements |
+| **Skill Extraction** | Regex NLP matching | Extracts skills from CVs, LinkedIn, and GitHub profiles |
+| **Fallback Reasoning** | Rule-based engine with curated resource map | Deterministic roadmap generation when LLM is unavailable |
+| **Ranking** | Weighted composite (60/20/20) | Combines skill overlap, keyword relevance, and experience match |
 
-### Dashboard / Profile
-- `GET /api/dashboard` (JWT required)
-- `PATCH /api/profile/skills/add` (JWT required)
-- `PATCH /api/profile/skills/remove` (JWT required)
-- `POST /api/profile/import` (JWT required)
-
-### Health
-- `GET /api/health`
+---
 
 ## Notes
 
 - The active LLM provider is controlled by `LLM_PROVIDER` in `.env` (`ollama` or `groq`).
-- LangChain tool classes exist in `backend/tools/`, but the active orchestration path is the custom engine pipeline in `backend/engines/`.
-- If the LLM provider is down or returns invalid JSON after all retries, the rule-based fallback engine is used automatically. Every recommendation includes a `fallback_used` boolean and a `fallback_reason` string so clients know which engine produced the analysis.
+- LangChain `BaseTool` wrappers exist in `backend/tools/` (`FetchInternshipsTool`, `SkillMatchTool`, `SkillGapAnalysisTool`), but the primary orchestration runs through the custom engine pipeline in `backend/engines/`.
+- If the LLM provider is down, the rule-based fallback engine is used automatically. Every recommendation includes `fallback_used` and `fallback_reason` so clients always know which engine produced the analysis.
+- The scraper runs as a daemon thread via APScheduler — it starts automatically when the Flask app boots and does not block the main server.
+- Internships are de-duplicated by `apply_url` during upsert, so repeated scraper runs never create duplicate entries.

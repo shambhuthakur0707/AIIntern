@@ -14,7 +14,7 @@ node_modules/
 
 # Environment files
 .env
-.env.*
+!.env.example
 
 # Build artifacts
 dist/
