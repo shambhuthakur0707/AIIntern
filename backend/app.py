@@ -26,6 +26,12 @@ def create_app():
     # ✅ Store DB inside app config (IMPORTANT)
     app.config["DB"] = db
 
+    # Ensure indexes for fast queries
+    db.internships.create_index([("domain", 1)])
+    db.internships.create_index([("location", 1)])
+    db.internship_analyses.create_index("cache_key", unique=True)
+    db.internship_analyses.create_index("expires_at")
+
     # Register blueprints
     try:
         from .routes.auth_routes import auth_bp

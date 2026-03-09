@@ -1,7 +1,10 @@
 from flask import Blueprint, current_app, request
 from flask_jwt_extended import jwt_required
 from urllib.parse import quote_plus
+import hashlib
+import logging
 import re
+from datetime import datetime, timedelta, timezone
 
 try:
     from ..utils.response_utils import success_response, error_response
@@ -11,6 +14,10 @@ except ImportError:
     from utils.response_utils import success_response, error_response
     from utils.jwt_utils import get_current_user
     from engines import llm_engine, fallback_engine, matching_engine, ranking_engine
+
+logger = logging.getLogger(__name__)
+
+ANALYSIS_CACHE_TTL_HOURS = 24
 
 internships_bp = Blueprint("internships", __name__)
 
@@ -79,6 +86,11 @@ def _to_int(value, default, min_value=1, max_value=None):
     if max_value is not None and parsed > max_value:
         return max_value
     return parsed
+
+
+def _analysis_cache_key(user_id: str, internship_id: str) -> str:
+    raw = f"{user_id}:{internship_id}"
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def _score_for_user(user_profile, internship):
@@ -192,11 +204,27 @@ def list_internships():
 
             if include_ai:
                 scored = _score_for_user(user_profile, internship)
-                llm_result, fallback_reason = llm_engine.analyze_single(user_profile, scored)
-                if llm_result is None:
-                    analysis = fallback_engine.generate_fallback(user_profile, scored, fallback_reason)
+                # Check cache first
+                cache_key = _analysis_cache_key(str(user.get("_id", "")), doc_id)
+                cached = db.internship_analyses.find_one({"cache_key": cache_key})
+                if cached and cached.get("expires_at", datetime.min.replace(tzinfo=timezone.utc)) > datetime.now(timezone.utc):
+                    analysis = cached["analysis"]
                 else:
-                    analysis = llm_result
+                    llm_result, fallback_reason = llm_engine.analyze_single(user_profile, scored)
+                    if llm_result is None:
+                        analysis = fallback_engine.generate_fallback(user_profile, scored, fallback_reason)
+                    else:
+                        analysis = llm_result
+                    # Store in cache
+                    db.internship_analyses.update_one(
+                        {"cache_key": cache_key},
+                        {"$set": {
+                            "cache_key": cache_key,
+                            "analysis": analysis,
+                            "expires_at": datetime.now(timezone.utc) + timedelta(hours=ANALYSIS_CACHE_TTL_HOURS),
+                        }},
+                        upsert=True,
+                    )
                 if analysis.get("fallback_used"):
                     fallback_count += 1
                 analyzed_count += 1
@@ -217,20 +245,25 @@ def list_internships():
 
             internships.append(internship)
 
-        all_docs = list(
-            db.internships.find({}, {"domain": 1, "location": 1, "sector": 1})
-        )
+        # Derive filter options from already-fetched data (no second DB query)
+        all_domains = set()
+        all_locations = set()
+        all_sectors = set()
+        for doc in raw_docs:
+            d = _normalize(doc.get("domain", ""))
+            l = _normalize(doc.get("location", ""))
+            if d:
+                all_domains.add(d)
+                all_sectors.add(_derive_sector(d, doc))
+            s = _normalize(doc.get("sector", ""))
+            if s:
+                all_sectors.add(s)
+            if l:
+                all_locations.add(l)
 
-        domains = sorted({_normalize(doc.get("domain", "")) for doc in all_docs if _normalize(doc.get("domain", ""))})
-        locations = sorted({_normalize(doc.get("location", "")) for doc in all_docs if _normalize(doc.get("location", ""))})
-
-        sectors = sorted(
-            {
-                _derive_sector(_normalize(doc.get("domain", "")), doc)
-                for doc in all_docs
-                if _normalize(doc.get("domain", "")) or _normalize(doc.get("sector", ""))
-            }
-        )
+        domains = sorted(all_domains)
+        locations = sorted(all_locations)
+        sectors = sorted(all_sectors)
 
         return success_response(
             data={

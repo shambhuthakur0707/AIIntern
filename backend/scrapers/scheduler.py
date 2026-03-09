@@ -66,10 +66,12 @@ def run_scraper_job(app):
             from .jsearch_scraper import fetch_internships as jsearch_fetch
             from .remotive_scraper import fetch_internships as remotive_fetch
             from .adzuna_scraper import fetch_internships as adzuna_fetch
+            from .cleanup import run_cleanup
         except ImportError:
             from scrapers.jsearch_scraper import fetch_internships as jsearch_fetch
             from scrapers.remotive_scraper import fetch_internships as remotive_fetch
             from scrapers.adzuna_scraper import fetch_internships as adzuna_fetch
+            from scrapers.cleanup import run_cleanup
 
         try:
             from .config import Config  # type: ignore[import]
@@ -144,6 +146,20 @@ def run_scraper_job(app):
             total_updated,
             len(errors),
         )
+
+        # ── 4. Cleanup: remove fake, expired, and dead-link internships ──
+        try:
+            cleanup_stats = run_cleanup(db)
+            logger.info(
+                "Cleanup finished — fake=%d, expired=%d, dead_link=%d (of %d checked)",
+                cleanup_stats["fake"],
+                cleanup_stats["expired"],
+                cleanup_stats["dead_link"],
+                cleanup_stats["total_checked"],
+            )
+        except Exception as exc:
+            logger.error("Cleanup raised: %s", exc)
+            errors.append(f"cleanup: {exc}")
 
 
 # ---------------------------------------------------------------------------

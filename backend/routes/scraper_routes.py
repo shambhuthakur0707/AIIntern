@@ -11,9 +11,11 @@ from flask_jwt_extended import jwt_required
 try:
     from ..utils.response_utils import success_response, error_response
     from ..scrapers.scheduler import run_scraper_job, get_scheduler
+    from ..scrapers.cleanup import run_cleanup
 except ImportError:
     from utils.response_utils import success_response, error_response
     from scrapers.scheduler import run_scraper_job, get_scheduler
+    from scrapers.cleanup import run_cleanup
 
 scraper_bp = Blueprint("scraper", __name__)
 
@@ -64,3 +66,22 @@ def scraper_status():
         return success_response(data=data, message="Scraper status retrieved.")
     except Exception as exc:
         return error_response(f"Could not retrieve status: {exc}", 500)
+
+
+@scraper_bp.route("/cleanup", methods=["POST"])
+@jwt_required()
+def trigger_cleanup():
+    """Manually trigger cleanup to remove fake, expired, and dead-link internships."""
+    try:
+        db = current_app.config["DB"]
+        stats = run_cleanup(db)
+        return success_response(
+            data=stats,
+            message=(
+                f"Cleanup done: removed {stats['fake']} fake, "
+                f"{stats['expired']} expired, {stats['dead_link']} dead-link "
+                f"internships (out of {stats['total_checked']} checked)."
+            ),
+        )
+    except Exception as exc:
+        return error_response(f"Cleanup failed: {exc}", 500)
