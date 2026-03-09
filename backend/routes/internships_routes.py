@@ -140,7 +140,7 @@ def list_internships():
         sector = _normalize(request.args.get("sector", ""))
         include_ai = _to_bool(request.args.get("include_ai"), True)
         page = _to_int(request.args.get("page"), 1, min_value=1)
-        page_size = _to_int(request.args.get("page_size"), 5, min_value=1, max_value=50)
+        page_size = _to_int(request.args.get("page_size"), 10, min_value=1, max_value=50)
 
         mongo_query = {}
 

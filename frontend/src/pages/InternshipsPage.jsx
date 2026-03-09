@@ -107,7 +107,7 @@ export default function InternshipsPage() {
     const [meta, setMeta] = useState({
         total: 0,
         page: 1,
-        page_size: 5,
+        page_size: 10,
         total_pages: 1,
         has_prev: false,
         has_next: false,
@@ -135,7 +135,7 @@ export default function InternshipsPage() {
             if (selectedFilters.location) params.location = selectedFilters.location
             params.include_ai = true
             params.page = selectedPage
-            params.page_size = 5
+            params.page_size = 10
 
             const { data } = await api.get('/internships', { params })
             setInternships(data.data.internships || [])
@@ -143,7 +143,7 @@ export default function InternshipsPage() {
             setMeta(data.data.meta || {
                 total: 0,
                 page: 1,
-                page_size: 5,
+                page_size: 10,
                 total_pages: 1,
                 has_prev: false,
                 has_next: false,
