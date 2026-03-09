@@ -54,4 +54,6 @@ def sanitize_user(user_doc):
         "resume_filename": user_doc.get("resume_filename", ""),
         "has_resume": bool(user_doc.get("resume_text")),
         "last_match_result": user_doc.get("last_match_result"),
+        "email_verified": user_doc.get("email_verified", False),
+        "auth_provider": user_doc.get("auth_provider", "email"),
     }

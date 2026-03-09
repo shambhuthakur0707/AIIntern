@@ -1,13 +1,22 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
 const SKILL_SUGGESTIONS = [
     'Python', 'JavaScript', 'React', 'Node.js', 'SQL', 'TensorFlow', 'PyTorch',
     'Machine Learning', 'Deep Learning', 'NLP', 'Data Analysis', 'Docker',
     'AWS', 'MongoDB', 'Git', 'Java', 'Scikit-learn', 'Pandas', 'NumPy',
     'Computer Vision', 'Flutter', 'Kotlin', 'REST API', 'DevOps', 'Kubernetes',
+]
+
+const PASSWORD_RULES = [
+    { test: (p) => p.length >= 8, label: 'At least 8 characters' },
+    { test: (p) => /[A-Z]/.test(p), label: 'One uppercase letter' },
+    { test: (p) => /[a-z]/.test(p), label: 'One lowercase letter' },
+    { test: (p) => /[0-9]/.test(p), label: 'One number' },
 ]
 
 export default function RegisterPage() {
@@ -19,6 +28,7 @@ export default function RegisterPage() {
     const [skillInput, setSkillInput] = useState('')
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
+    const [googleLoading, setGoogleLoading] = useState(false)
     const { login } = useAuth()
     const navigate = useNavigate()
 
@@ -34,22 +44,60 @@ export default function RegisterPage() {
 
     const removeSkill = (skill) => setForm({ ...form, skills: form.skills.filter((s) => s !== skill) })
 
+    const passwordValid = PASSWORD_RULES.every((r) => r.test(form.password))
+
     const handleSubmit = async (e) => {
         e.preventDefault()
         setError('')
         if (form.skills.length === 0) { setError('Please add at least one skill.'); return }
+        if (!passwordValid) { setError('Please meet all password requirements.'); return }
         setLoading(true)
         try {
             const { data } = await api.post('/auth/register', {
                 ...form,
-                interests: form.skills.slice(0, 3), // Use first 3 skills as interests default
+                interests: form.skills.slice(0, 3),
             })
             login(data.data.token, data.data.user)
-            navigate('/dashboard')
+            navigate('/verify-email', { state: { email: form.email } })
         } catch (err) {
             setError(err.response?.data?.message || 'Registration failed.')
         } finally {
             setLoading(false)
+        }
+    }
+
+    // Initialize Google Sign-In
+    useEffect(() => {
+        if (!GOOGLE_CLIENT_ID) return
+        const script = document.createElement('script')
+        script.src = 'https://accounts.google.com/gsi/client'
+        script.async = true
+        script.defer = true
+        script.onload = () => {
+            window.google?.accounts.id.initialize({
+                client_id: GOOGLE_CLIENT_ID,
+                callback: handleGoogleResponse,
+            })
+            window.google?.accounts.id.renderButton(
+                document.getElementById('google-signup-btn'),
+                { theme: 'filled_black', size: 'large', width: '100%', text: 'signup_with', shape: 'pill' }
+            )
+        }
+        document.head.appendChild(script)
+        return () => { script.remove() }
+    }, []) // eslint-disable-line
+
+    const handleGoogleResponse = async (response) => {
+        setError('')
+        setGoogleLoading(true)
+        try {
+            const { data } = await api.post('/auth/google', { credential: response.credential })
+            login(data.data.token, data.data.user)
+            navigate('/dashboard')
+        } catch (err) {
+            setError(err.response?.data?.message || 'Google sign-up failed.')
+        } finally {
+            setGoogleLoading(false)
         }
     }
 
@@ -72,6 +120,26 @@ export default function RegisterPage() {
                         </div>
                     )}
 
+                    {/* Google Sign-Up */}
+                    {GOOGLE_CLIENT_ID && (
+                        <>
+                            <div className="mb-5">
+                                {googleLoading ? (
+                                    <div className="flex items-center justify-center gap-2 py-3 text-sm text-gray-400">
+                                        <div className="spinner" /> Signing up with Google…
+                                    </div>
+                                ) : (
+                                    <div id="google-signup-btn" className="flex justify-center" />
+                                )}
+                            </div>
+                            <div className="flex items-center gap-3 mb-5">
+                                <div className="flex-1 h-px bg-white/10" />
+                                <span className="text-xs text-gray-500">or register with email</span>
+                                <div className="flex-1 h-px bg-white/10" />
+                            </div>
+                        </>
+                    )}
+
                     <form onSubmit={handleSubmit} className="space-y-5" id="register-form">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
@@ -89,7 +157,17 @@ export default function RegisterPage() {
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-1.5">Password</label>
                             <input id="reg-password" type="password" name="password" value={form.password} onChange={handleChange}
-                                placeholder="Min. 6 characters" minLength={6} required className="form-input" />
+                                placeholder="Min. 8 characters" minLength={8} required className="form-input" />
+                            {form.password && (
+                                <div className="mt-2 space-y-1">
+                                    {PASSWORD_RULES.map((rule) => (
+                                        <div key={rule.label} className={`flex items-center gap-1.5 text-xs ${rule.test(form.password) ? 'text-emerald-400' : 'text-gray-500'}`}>
+                                            <span>{rule.test(form.password) ? '✓' : '○'}</span>
+                                            <span>{rule.label}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         <div>

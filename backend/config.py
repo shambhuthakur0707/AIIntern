@@ -13,14 +13,23 @@ class Config:
     FLASK_DEBUG = os.getenv("FLASK_DEBUG", "True").lower() == "true"
 
     # ── Job scraper API keys ──────────────────────────────────────────────
-    # JSearch (RapidAPI) — covers LinkedIn, Indeed, Glassdoor, ZipRecruiter
-    # Free tier: 200 req/month  →  https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch
     JSEARCH_API_KEY = os.getenv("JSEARCH_API_KEY", "")
-
-    # Adzuna — global job board aggregator
-    # Free tier: 250 req/month  →  https://developer.adzuna.com/
     ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID", "")
     ADZUNA_API_KEY = os.getenv("ADZUNA_API_KEY", "")
-
-    # How often the background scraper runs (hours). Default: every 6 hours.
     SCRAPER_INTERVAL_HOURS = int(os.getenv("SCRAPER_INTERVAL_HOURS", 6))
+
+    # ── Google OAuth ──────────────────────────────────────────────────────
+    GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+
+    # ── Email / SMTP for OTP ──────────────────────────────────────────────
+    MAIL_SERVER = os.getenv("MAIL_SERVER", "smtp.gmail.com")
+    MAIL_PORT = int(os.getenv("MAIL_PORT", 587))
+    MAIL_USE_TLS = os.getenv("MAIL_USE_TLS", "True").lower() == "true"
+    MAIL_USERNAME = os.getenv("MAIL_USERNAME", "")
+    MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "")
+    MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", "")
+
+    # ── Security ──────────────────────────────────────────────────────────
+    CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+    MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", 5 * 1024 * 1024))  # 5MB

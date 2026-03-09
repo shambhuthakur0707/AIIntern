@@ -16,6 +16,7 @@ except ImportError:
 dashboard_bp = Blueprint("dashboard", __name__)
 
 ALLOWED_CV_EXTENSIONS = {".txt", ".md", ".rtf"}
+MAX_CV_SIZE = 5 * 1024 * 1024  # 5MB
 
 
 @dashboard_bp.route("/dashboard", methods=["GET"])
@@ -99,6 +100,8 @@ def _read_cv_text(uploaded_file):
         return "", "Unsupported CV format. Use .txt, .md, or .rtf."
 
     raw = uploaded_file.read()
+    if len(raw) > MAX_CV_SIZE:
+        return "", "CV file too large. Maximum size is 5MB."
     try:
         text = raw.decode("utf-8", errors="ignore")
     except Exception:

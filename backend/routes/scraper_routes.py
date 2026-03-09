@@ -40,7 +40,7 @@ def trigger_scraper():
             message="Scraper completed successfully.",
         )
     except Exception as exc:
-        return error_response(f"Scraper failed: {exc}", 500)
+        return error_response("Scraper failed", 500)
 
 
 @scraper_bp.route("/status", methods=["GET"])

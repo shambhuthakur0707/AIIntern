@@ -1,3 +1,4 @@
+import logging
 from flask import Blueprint
 from flask_jwt_extended import jwt_required
 try:
@@ -12,6 +13,8 @@ except ImportError:
     from agents.internship_agent import run_matching_agent
     from services.user_service import update_user_match_result
     from models.user_model import sanitize_user
+
+logger = logging.getLogger(__name__)
 
 agent_bp = Blueprint("agent", __name__)
 
@@ -62,5 +65,5 @@ def match_internships():
         )
 
     except Exception as e:
-        print("FULL ERROR:", e)
-        raise e
+        logger.exception("Agent pipeline failed")
+        return error_response("Internal server error", 500)

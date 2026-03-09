@@ -52,7 +52,7 @@ def _derive_sector(domain, doc):
 
 def _regex_filter(value):
     value = _normalize(value)
-    if not value:
+    if not value or len(value) > 100:
         return None
     # Escape user-selected values so characters like () are matched literally.
     return {"$regex": re.escape(value), "$options": "i"}
@@ -126,6 +126,15 @@ def _score_for_user(user_profile, internship):
     return scored
 
 
+def _ensure_utc(dt):
+    """Make a datetime timezone-aware (UTC) if it's naive."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 @internships_bp.route("", methods=["GET"])
 @jwt_required()
 def list_internships():
@@ -154,6 +163,7 @@ def list_internships():
         page = _to_int(request.args.get("page"), 1, min_value=1)
         page_size = _to_int(request.args.get("page_size"), 10, min_value=1, max_value=50)
 
+        # ── Build MongoDB filter ──────────────────────────────────────
         mongo_query = {}
 
         domain_q = _regex_filter(domain)
@@ -164,28 +174,72 @@ def list_internships():
         if location_q:
             mongo_query["location"] = location_q
 
-        raw_docs = list(db.internships.find(mongo_query).sort("title", 1))
-        scoped_docs = []
-        for doc in raw_docs:
-            doc_domain = _normalize(doc.get("domain", ""))
-            doc_sector = _derive_sector(doc_domain, doc)
-            if sector and doc_sector.lower() != sector.lower():
-                continue
-            scoped_docs.append((doc, doc_domain, doc_sector))
+        # ── Fetch filter options (lightweight projection, unfiltered) ─
+        filter_pipeline = [
+            {"$group": {
+                "_id": None,
+                "domains": {"$addToSet": "$domain"},
+                "locations": {"$addToSet": "$location"},
+                "sectors": {"$addToSet": "$sector"},
+            }}
+        ]
+        filter_agg = list(db.internships.aggregate(filter_pipeline))
+        if filter_agg:
+            raw_domains = sorted(d for d in filter_agg[0].get("domains", []) if d and d.strip())
+            raw_locations = sorted(l for l in filter_agg[0].get("locations", []) if l and l.strip())
+            raw_sectors_explicit = {s.strip() for s in filter_agg[0].get("sectors", []) if s and s.strip()}
+        else:
+            raw_domains = []
+            raw_locations = []
+            raw_sectors_explicit = set()
 
-        total = len(scoped_docs)
-        total_pages = max(1, (total + page_size - 1) // page_size)
-        if page > total_pages:
-            page = total_pages
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        page_docs = scoped_docs[start_idx:end_idx]
+        # Build full sector list from domains + explicit sectors
+        all_sectors = set(raw_sectors_explicit)
+        for d in raw_domains:
+            all_sectors.add(DOMAIN_TO_SECTOR.get(d.lower(), d))
+        domains = raw_domains
+        locations = raw_locations
+        sectors = sorted(all_sectors)
 
+        # ── Count + paginate filtered docs ────────────────────────────
+        # For sector filtering we need Python-side logic since sector is derived
+        if sector:
+            # Fetch only IDs + domain + sector fields for sector filtering
+            cursor = db.internships.find(mongo_query, {"domain": 1, "sector": 1}).sort("title", 1)
+            matching_ids = []
+            for doc in cursor:
+                doc_domain = _normalize(doc.get("domain", ""))
+                doc_sector = _derive_sector(doc_domain, doc)
+                if doc_sector.lower() == sector.lower():
+                    matching_ids.append(doc["_id"])
+
+            total = len(matching_ids)
+            total_pages = max(1, (total + page_size - 1) // page_size)
+            if page > total_pages:
+                page = total_pages
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            page_ids = matching_ids[start_idx:end_idx]
+            page_docs_cursor = db.internships.find({"_id": {"$in": page_ids}}).sort("title", 1)
+        else:
+            total = db.internships.count_documents(mongo_query)
+            total_pages = max(1, (total + page_size - 1) // page_size)
+            if page > total_pages:
+                page = total_pages
+            skip = (page - 1) * page_size
+            page_docs_cursor = db.internships.find(mongo_query).sort("title", 1).skip(skip).limit(page_size)
+
+        # ── Process page docs ─────────────────────────────────────────
         internships = []
         analyzed_count = 0
         fallback_count = 0
-        for doc, doc_domain, doc_sector in page_docs:
+        now_utc = datetime.now(timezone.utc)
+        user_id_str = str(user.get("_id", ""))
+
+        for doc in page_docs_cursor:
             doc_id = str(doc.get("_id", ""))
+            doc_domain = _normalize(doc.get("domain", ""))
+            doc_sector = _derive_sector(doc_domain, doc)
 
             internship = {
                 "_id": doc_id,
@@ -204,10 +258,15 @@ def list_internships():
 
             if include_ai:
                 scored = _score_for_user(user_profile, internship)
-                # Check cache first
-                cache_key = _analysis_cache_key(str(user.get("_id", "")), doc_id)
+                # Check cache first (timezone-safe comparison)
+                cache_key = _analysis_cache_key(user_id_str, doc_id)
                 cached = db.internship_analyses.find_one({"cache_key": cache_key})
-                if cached and cached.get("expires_at", datetime.min.replace(tzinfo=timezone.utc)) > datetime.now(timezone.utc):
+                cache_valid = False
+                if cached:
+                    expires = _ensure_utc(cached.get("expires_at"))
+                    cache_valid = expires is not None and expires > now_utc
+
+                if cache_valid:
                     analysis = cached["analysis"]
                 else:
                     llm_result, fallback_reason = llm_engine.analyze_single(user_profile, scored)
@@ -221,7 +280,7 @@ def list_internships():
                         {"$set": {
                             "cache_key": cache_key,
                             "analysis": analysis,
-                            "expires_at": datetime.now(timezone.utc) + timedelta(hours=ANALYSIS_CACHE_TTL_HOURS),
+                            "expires_at": now_utc + timedelta(hours=ANALYSIS_CACHE_TTL_HOURS),
                         }},
                         upsert=True,
                     )
@@ -244,26 +303,6 @@ def list_internships():
                 )
 
             internships.append(internship)
-
-        # Derive filter options from already-fetched data (no second DB query)
-        all_domains = set()
-        all_locations = set()
-        all_sectors = set()
-        for doc in raw_docs:
-            d = _normalize(doc.get("domain", ""))
-            l = _normalize(doc.get("location", ""))
-            if d:
-                all_domains.add(d)
-                all_sectors.add(_derive_sector(d, doc))
-            s = _normalize(doc.get("sector", ""))
-            if s:
-                all_sectors.add(s)
-            if l:
-                all_locations.add(l)
-
-        domains = sorted(all_domains)
-        locations = sorted(all_locations)
-        sectors = sorted(all_sectors)
 
         return success_response(
             data={
@@ -295,4 +334,5 @@ def list_internships():
             message="Internships loaded",
         )
     except Exception as exc:
-        return error_response("Failed to load internships", 500, str(exc))
+        logger.exception("Failed to load internships")
+        return error_response("Failed to load internships", 500)

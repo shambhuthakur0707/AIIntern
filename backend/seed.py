@@ -143,11 +143,12 @@ SAMPLE_USERS = [
     {
         "name": "Aryan Sharma",
         "email": "aryan@example.com",
-        "password_hash": bcrypt.hashpw(b"password123", bcrypt.gensalt()).decode(),
+        "password_hash": bcrypt.hashpw(b"Password1", bcrypt.gensalt()).decode(),
         "skills": ["Python", "Machine Learning", "Pandas", "NumPy", "Scikit-learn", "SQL"],
         "interests": ["Machine Learning", "Data Science", "AI Research"],
         "experience_level": "intermediate",
         "education": "B.Tech Computer Science, IIT Roorkee (3rd Year)",
+        "email_verified": True,
         "last_match_result": None,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
@@ -155,11 +156,12 @@ SAMPLE_USERS = [
     {
         "name": "Priya Singh",
         "email": "priya@example.com",
-        "password_hash": bcrypt.hashpw(b"password123", bcrypt.gensalt()).decode(),
+        "password_hash": bcrypt.hashpw(b"Password1", bcrypt.gensalt()).decode(),
         "skills": ["JavaScript", "React", "Node.js", "HTML", "CSS", "Git"],
         "interests": ["Web Development", "Full Stack", "UI/UX"],
         "experience_level": "beginner",
         "education": "B.E. Information Technology, VIT Vellore (2nd Year)",
+        "email_verified": True,
         "last_match_result": None,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
@@ -181,8 +183,8 @@ def seed():
     print(f"✅ Seeded {len(user_result.inserted_ids)} sample users")
 
     print("\n📧 Sample login credentials:")
-    print("   Email: aryan@example.com    | Password: password123")
-    print("   Email: priya@example.com    | Password: password123")
+    print("   Email: aryan@example.com    | Password: Password1")
+    print("   Email: priya@example.com    | Password: Password1")
     print("\n🚀 Seed complete! Run 'python app.py' to start the backend.")
 
 
