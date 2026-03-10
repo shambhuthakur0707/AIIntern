@@ -7,7 +7,7 @@ Internships are de-duplicated by apply_url so re-runs don't create duplicates.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -191,6 +191,7 @@ def init_scheduler(app, interval_hours: int = 6):
         id="internship_scraper",
         name="Internship Scraper (periodic)",
         replace_existing=True,
+        next_run_time=datetime.now(timezone.utc),  # run immediately on startup
     )
     _scheduler.start()
     logger.info(

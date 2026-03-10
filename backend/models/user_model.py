@@ -45,6 +45,7 @@ def sanitize_user(user_doc):
         "id": str(user_doc["_id"]),
         "name": user_doc.get("name"),
         "email": user_doc.get("email"),
+        "phone": user_doc.get("phone", ""),
         "skills": user_doc.get("skills", []),
         "interests": user_doc.get("interests", []),
         "experience_level": user_doc.get("experience_level"),

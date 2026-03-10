@@ -360,3 +360,173 @@ def update_profile():
     db.users.update_one({"_id": ObjectId(user_id)}, {"$set": updates})
     user = db.users.find_one({"_id": ObjectId(user_id)})
     return success_response(data={"user": sanitize_user(user)}, message="Profile updated")
+
+
+PHONE_RE = re.compile(r"^\+?[1-9]\d{6,14}$")
+
+
+@auth_bp.route("/phone", methods=["PATCH"])
+@jwt_required()
+def update_phone():
+    """PATCH /api/auth/phone — add or update phone number."""
+    user_id = get_jwt_identity()
+    data = request.get_json() or {}
+    phone = (data.get("phone") or "").strip()
+
+    if not phone:
+        return error_response("Phone number is required", 400)
+    if not PHONE_RE.match(phone):
+        return error_response("Invalid phone number. Use international format e.g. +919876543210", 400)
+
+    db = current_app.config["DB"]
+    db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"phone": phone, "updated_at": datetime.now(timezone.utc)}},
+    )
+    user = db.users.find_one({"_id": ObjectId(user_id)})
+    return success_response(data={"user": sanitize_user(user)}, message="Phone number updated")
+
+
+@auth_bp.route("/change-password", methods=["PUT"])
+@jwt_required()
+@limiter.limit("5 per minute")
+def change_password():
+    """PUT /api/auth/change-password — change password using current password."""
+    user_id = get_jwt_identity()
+    data = request.get_json() or {}
+
+    current_password = data.get("current_password", "")
+    new_password = data.get("new_password", "")
+
+    if not current_password or not new_password:
+        return error_response("current_password and new_password are required", 400)
+
+    db = current_app.config["DB"]
+    user = db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        return error_response("User not found", 404)
+
+    if not user.get("password_hash"):
+        return error_response("This account uses Google sign-in and has no password", 400)
+
+    if not bcrypt.checkpw(current_password.encode("utf-8"), user["password_hash"].encode("utf-8")):
+        return error_response("Current password is incorrect", 401)
+
+    if current_password == new_password:
+        return error_response("New password must be different from current password", 400)
+
+    pw_error = _validate_password(new_password)
+    if pw_error:
+        return error_response(pw_error, 400)
+
+    new_hash = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"password_hash": new_hash, "updated_at": datetime.now(timezone.utc)}},
+    )
+    logger.info("Password changed for user %s", user_id)
+    return success_response(message="Password changed successfully")
+
+
+@auth_bp.route("/change-email", methods=["POST"])
+@jwt_required()
+@limiter.limit("3 per minute")
+def change_email_request():
+    """POST /api/auth/change-email — send OTP to new email to verify ownership."""
+    user_id = get_jwt_identity()
+    data = request.get_json() or {}
+
+    new_email = (data.get("new_email") or "").lower().strip()
+    if not new_email:
+        return error_response("new_email is required", 400)
+    if not EMAIL_RE.match(new_email):
+        return error_response("Invalid email format", 400)
+
+    db = current_app.config["DB"]
+
+    if db.users.find_one({"email": new_email}):
+        return error_response("This email is already in use", 409)
+
+    current_user = db.users.find_one({"_id": ObjectId(user_id)})
+    if not current_user:
+        return error_response("User not found", 404)
+
+    if current_user.get("email") == new_email:
+        return error_response("New email must be different from current email", 400)
+
+    # Store OTP against new email for verification
+    db.otp_codes.delete_many({"user_id": user_id, "purpose": "email_change"})
+    otp = _generate_otp()
+    db.otp_codes.insert_one({
+        "user_id": user_id,
+        "email": new_email,
+        "otp": otp,
+        "purpose": "email_change",
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES),
+        "created_at": datetime.now(timezone.utc),
+    })
+
+    try:
+        msg = Message(
+            subject="AIIntern - Confirm your new email",
+            recipients=[new_email],
+            html=f"""
+            <div style="font-family: sans-serif; max-width: 400px; margin: auto; padding: 24px;">
+                <h2 style="color: #6366f1;">Confirm Email Change</h2>
+                <p>Enter this code in AIIntern to confirm your new email address:</p>
+                <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; text-align: center; margin: 16px 0;">
+                    <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1f2937;">{otp}</span>
+                </div>
+                <p style="color: #6b7280; font-size: 14px;">This code expires in {OTP_EXPIRY_MINUTES} minutes.</p>
+                <p style="color: #9ca3af; font-size: 12px;">If you didn't request this, please ignore this email.</p>
+            </div>
+            """,
+        )
+        mail.send(msg)
+    except Exception as exc:
+        logger.error("Failed to send email-change OTP to %s: %s", new_email, exc)
+        return error_response("Failed to send verification email", 500)
+
+    return success_response(message=f"Verification code sent to {new_email}")
+
+
+@auth_bp.route("/verify-email-change", methods=["POST"])
+@jwt_required()
+@limiter.limit("5 per minute")
+def verify_email_change():
+    """POST /api/auth/verify-email-change — confirm OTP and update email."""
+    user_id = get_jwt_identity()
+    data = request.get_json() or {}
+
+    new_email = (data.get("new_email") or "").lower().strip()
+    otp = (data.get("otp") or "").strip()
+
+    if not new_email or not otp:
+        return error_response("new_email and otp are required", 400)
+
+    db = current_app.config["DB"]
+
+    record = db.otp_codes.find_one({
+        "user_id": user_id,
+        "email": new_email,
+        "otp": otp,
+        "purpose": "email_change",
+        "expires_at": {"$gt": datetime.now(timezone.utc)},
+    })
+
+    if not record:
+        return error_response("Invalid or expired verification code", 400)
+
+    # Double-check email not taken (race condition guard)
+    if db.users.find_one({"email": new_email}):
+        return error_response("This email is already in use", 409)
+
+    db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"email": new_email, "email_verified": True, "updated_at": datetime.now(timezone.utc)}},
+    )
+    db.otp_codes.delete_many({"user_id": user_id, "purpose": "email_change"})
+
+    user = db.users.find_one({"_id": ObjectId(user_id)})
+    logger.info("Email changed for user %s to %s", user_id, new_email)
+    return success_response(data={"user": sanitize_user(user)}, message="Email updated successfully")
