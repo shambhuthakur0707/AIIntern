@@ -120,6 +120,11 @@ export default function InternshipsPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
 
+    // Scraper search state
+    const [searchLocation, setSearchLocation] = useState('')
+    const [scraping, setScraping] = useState(false)
+    const [scrapeResult, setScrapeResult] = useState(null)
+
     const activeFilterCount = useMemo(
         () => Object.values(filters).filter(Boolean).length,
         [filters],
@@ -175,11 +180,81 @@ export default function InternshipsPage() {
         loadInternships(filters, nextPage)
     }
 
+    const searchNewInternships = async () => {
+        setScraping(true)
+        setScrapeResult(null)
+        try {
+            const { data } = await api.post('/scraper/trigger', { location: searchLocation })
+            setScrapeResult({
+                success: true,
+                inserted: data.data.total_inserted,
+                updated: data.data.total_updated,
+                location: data.data.location,
+            })
+            // Reload the list to show newly scraped internships
+            loadInternships(DEFAULT_FILTERS, 1)
+        } catch (err) {
+            setScrapeResult({
+                success: false,
+                message: err.response?.data?.message || 'Scraping failed. Please try again.',
+            })
+        } finally {
+            setScraping(false)
+        }
+    }
+
     return (
         <div className="min-h-screen flex flex-col">
             <Navbar />
 
             <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+                {/* Search for new internships */}
+                <section className="glass-card p-6">
+                    <p className="section-label mb-2">Search New Internships</p>
+                    <h2 className="text-xl font-bold text-white mb-1">Find internships in a specific location</h2>
+                    <p className="text-sm text-gray-400 mb-4">
+                        Enter a city, state, or country to search for new internships. This fetches fresh listings from external sources.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <input
+                            type="text"
+                            className="form-input flex-1"
+                            placeholder="e.g. New York, India, London, Remote…"
+                            value={searchLocation}
+                            onChange={(e) => setSearchLocation(e.target.value)}
+                            maxLength={100}
+                            disabled={scraping}
+                        />
+                        <button
+                            type="button"
+                            className="btn-primary !py-2.5 !px-6 text-sm whitespace-nowrap"
+                            onClick={searchNewInternships}
+                            disabled={scraping}
+                        >
+                            {scraping ? (
+                                <span className="flex items-center gap-2">
+                                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                    </svg>
+                                    Searching…
+                                </span>
+                            ) : 'Search internships'}
+                        </button>
+                    </div>
+                    {scrapeResult && (
+                        <div className={`mt-3 text-sm px-4 py-3 rounded-xl border ${
+                            scrapeResult.success
+                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                        }`}>
+                            {scrapeResult.success
+                                ? `Found ${scrapeResult.inserted} new and updated ${scrapeResult.updated} existing internships for "${scrapeResult.location}".`
+                                : scrapeResult.message}
+                        </div>
+                    )}
+                </section>
+
                 <section className="glass-card p-6">
                     <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
                         <div>

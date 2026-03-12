@@ -5,16 +5,16 @@ POST  /api/scraper/trigger   — kick off a scrape immediately (admin action)
 GET   /api/scraper/status    — return last-run metadata + scheduler state
 """
 
-from flask import Blueprint, current_app
+from flask import Blueprint, current_app, request
 from flask_jwt_extended import jwt_required
 
 try:
     from ..utils.response_utils import success_response, error_response
-    from ..scrapers.scheduler import run_scraper_job, get_scheduler
+    from ..scrapers.scheduler import run_scraper_job
     from ..scrapers.cleanup import run_cleanup
 except ImportError:
     from utils.response_utils import success_response, error_response
-    from scrapers.scheduler import run_scraper_job, get_scheduler
+    from scrapers.scheduler import run_scraper_job
     from scrapers.cleanup import run_cleanup
 
 scraper_bp = Blueprint("scraper", __name__)
@@ -23,10 +23,15 @@ scraper_bp = Blueprint("scraper", __name__)
 @scraper_bp.route("/trigger", methods=["POST"])
 @jwt_required()
 def trigger_scraper():
-    """Manually trigger the internship scraper (runs synchronously in the request)."""
+    """Manually trigger the internship scraper for a specific location."""
     try:
+        body = request.get_json(silent=True) or {}
+        location = (body.get("location") or "").strip()
+        if len(location) > 100:
+            return error_response("Location must be under 100 characters", 400)
+
         app = current_app._get_current_object()  # noqa: SLF001
-        run_scraper_job(app)
+        run_scraper_job(app, location=location)
 
         db = current_app.config["DB"]
         meta = db.scraper_meta.find_one({"_id": "last_run"}) or {}
@@ -36,6 +41,7 @@ def trigger_scraper():
                 "total_inserted": meta.get("total_inserted", 0),
                 "total_updated": meta.get("total_updated", 0),
                 "errors": meta.get("errors", []),
+                "location": location or "(all)",
             },
             message="Scraper completed successfully.",
         )
@@ -46,15 +52,13 @@ def trigger_scraper():
 @scraper_bp.route("/status", methods=["GET"])
 @jwt_required()
 def scraper_status():
-    """Return the last scraper run metadata and whether the scheduler is active."""
+    """Return the last scraper run metadata."""
     try:
         db = current_app.config["DB"]
         meta = db.scraper_meta.find_one({"_id": "last_run"}) or {}
-        scheduler = get_scheduler()
 
         run_at = meta.get("run_at")
         data = {
-            "scheduler_running": bool(scheduler and scheduler.running),
             "last_run": {
                 "run_at": run_at.isoformat() if run_at else None,
                 "total_inserted": meta.get("total_inserted", 0),

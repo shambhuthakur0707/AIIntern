@@ -1,20 +1,16 @@
 """
-Background scheduler that periodically fetches internships from external job APIs
-and upserts them into MongoDB.
+Internship scraper orchestrator.
 
-The scheduler runs every SCRAPER_INTERVAL_HOURS hours (default: 6).
+Scraping is triggered on-demand by the user (via the API) and results
+are persisted in MongoDB until their deadline expires.
+
 Internships are de-duplicated by apply_url so re-runs don't create duplicates.
 """
 
 import logging
 from datetime import datetime, timezone
 
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-
 logger = logging.getLogger(__name__)
-
-_scheduler = None
 
 
 # ---------------------------------------------------------------------------
@@ -55,10 +51,14 @@ def _upsert_internships(db, internships: list) -> tuple:
 # Core scraper job
 # ---------------------------------------------------------------------------
 
-def run_scraper_job(app):
+def run_scraper_job(app, location: str = ""):
     """
     Orchestrates all scrapers and stores results in MongoDB.
     Must be called with an active Flask app context (or inside `with app.app_context()`).
+
+    Args:
+        app: Flask application instance.
+        location: Optional location to narrow scraping (e.g. "New York", "India").
     """
     with app.app_context():
         # Import scrapers inside the function so they're always resolved correctly
@@ -85,9 +85,11 @@ def run_scraper_job(app):
 
         logger.info("Internship scraper job started at %s", datetime.utcnow().isoformat())
 
+        logger.info("Scraping with location filter: '%s'", location or "(all)")
+
         # ── 1. Remotive (free, no key required) ───────────────────────────
         try:
-            jobs = remotive_fetch()
+            jobs = remotive_fetch(location=location)
             ins, upd = _upsert_internships(db, jobs)
             total_inserted += ins
             total_updated += upd
@@ -99,7 +101,7 @@ def run_scraper_job(app):
         # ── 2. JSearch (RapidAPI — covers LinkedIn, Indeed, Glassdoor) ────
         if Config.JSEARCH_API_KEY:
             try:
-                jobs = jsearch_fetch(api_key=Config.JSEARCH_API_KEY)
+                jobs = jsearch_fetch(api_key=Config.JSEARCH_API_KEY, location=location)
                 ins, upd = _upsert_internships(db, jobs)
                 total_inserted += ins
                 total_updated += upd
@@ -114,7 +116,8 @@ def run_scraper_job(app):
         if Config.ADZUNA_APP_ID and Config.ADZUNA_API_KEY:
             try:
                 jobs = adzuna_fetch(
-                    app_id=Config.ADZUNA_APP_ID, api_key=Config.ADZUNA_API_KEY
+                    app_id=Config.ADZUNA_APP_ID, api_key=Config.ADZUNA_API_KEY,
+                    location=location,
                 )
                 ins, upd = _upsert_internships(db, jobs)
                 total_inserted += ins
@@ -160,46 +163,3 @@ def run_scraper_job(app):
         except Exception as exc:
             logger.error("Cleanup raised: %s", exc)
             errors.append(f"cleanup: {exc}")
-
-
-# ---------------------------------------------------------------------------
-# Scheduler lifecycle
-# ---------------------------------------------------------------------------
-
-def init_scheduler(app, interval_hours: int = 6):
-    """
-    Start the APScheduler background scheduler.
-
-    Args:
-        app: Flask application instance.
-        interval_hours: How often to re-run the scraper (default 6 hours).
-
-    Returns:
-        The running BackgroundScheduler instance.
-    """
-    global _scheduler
-
-    if _scheduler and _scheduler.running:
-        logger.info("Scheduler is already running — skipping re-init.")
-        return _scheduler
-
-    _scheduler = BackgroundScheduler(daemon=True)
-    _scheduler.add_job(
-        func=run_scraper_job,
-        trigger=IntervalTrigger(hours=interval_hours),
-        args=[app],
-        id="internship_scraper",
-        name="Internship Scraper (periodic)",
-        replace_existing=True,
-        next_run_time=datetime.now(timezone.utc),  # run immediately on startup
-    )
-    _scheduler.start()
-    logger.info(
-        "Internship scraper scheduler started — runs every %d hour(s).", interval_hours
-    )
-    return _scheduler
-
-
-def get_scheduler():
-    """Return the current scheduler instance (may be None if not started)."""
-    return _scheduler

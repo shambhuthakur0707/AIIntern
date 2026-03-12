@@ -81,12 +81,7 @@ def create_app():
     app.register_blueprint(internships_bp, url_prefix="/api/internships")
     app.register_blueprint(scraper_bp, url_prefix="/api/scraper")
 
-    # Start the background internship scraper scheduler
-    try:
-        from .scrapers.scheduler import init_scheduler
-    except ImportError:
-        from scrapers.scheduler import init_scheduler
-    init_scheduler(app, interval_hours=Config.SCRAPER_INTERVAL_HOURS)
+    # Scraping is now user-triggered only — no auto-scrape on startup
 
     @app.route("/api/health")
     def health():

@@ -132,13 +132,38 @@ def _map_job(job: dict, country: str) -> dict:
     }
 
 
-def fetch_internships(app_id: str, api_key: str) -> list:
+# Map common location names to Adzuna country codes
+_LOCATION_TO_COUNTRY = {
+    "us": "us", "usa": "us", "united states": "us", "america": "us",
+    "uk": "gb", "gb": "gb", "united kingdom": "gb", "england": "gb", "britain": "gb",
+    "in": "in", "india": "in",
+    "au": "au", "australia": "au",
+    "ca": "ca", "canada": "ca",
+    "de": "de", "germany": "de",
+    "fr": "fr", "france": "fr",
+}
+
+
+def _resolve_countries(location: str) -> list:
+    """Resolve a location string to a list of Adzuna country codes."""
+    if not location:
+        return COUNTRIES
+    loc_lower = location.strip().lower()
+    for key, code in _LOCATION_TO_COUNTRY.items():
+        if key in loc_lower:
+            return [code]
+    # If no country match, search all countries with location in the query
+    return COUNTRIES
+
+
+def fetch_internships(app_id: str, api_key: str, location: str = "") -> list:
     """
     Fetch internships from the Adzuna API.
 
     Args:
         app_id: Your Adzuna application ID.
         api_key: Your Adzuna API key.
+        location: Optional location to narrow the search.
 
     Returns:
         List of internship dicts ready for MongoDB insertion.
@@ -147,15 +172,19 @@ def fetch_internships(app_id: str, api_key: str) -> list:
         logger.warning("Adzuna: ADZUNA_APP_ID or ADZUNA_API_KEY not set — skipping.")
         return []
 
+    countries = _resolve_countries(location)
+    # Include location in search terms if provided and not already a country-level filter
+    location_suffix = f" {location}" if location and len(countries) == len(COUNTRIES) else ""
+
     results = []
-    for country in COUNTRIES:
+    for country in countries:
         for term in SEARCH_TERMS:
             url = f"{ADZUNA_BASE}/{country}/search/1"
             params = {
                 "app_id": app_id,
                 "app_key": api_key,
                 "results_per_page": 20,
-                "what": term,
+                "what": term + location_suffix,
                 "content-type": "application/json",
             }
             try:

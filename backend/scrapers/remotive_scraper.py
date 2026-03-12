@@ -77,14 +77,19 @@ def _map_job(job: dict) -> dict:
     }
 
 
-def fetch_internships() -> list:
+def fetch_internships(location: str = "") -> list:
     """
     Fetch remote internships from Remotive API.
     Searches 'intern' across multiple job categories.
 
+    Args:
+        location: Optional location to filter results (post-fetch filter since
+                  Remotive doesn't support location in API params).
+
     Returns:
         List of internship dicts ready for MongoDB insertion.
     """
+    loc_lower = (location or "").strip().lower()
     results = []
     for category in CATEGORIES:
         params = {
@@ -102,7 +107,11 @@ def fetch_internships() -> list:
                 desc = job.get("description", "")
                 if not _is_internship(title, desc):
                     continue
-                results.append(_map_job(job))
+                mapped = _map_job(job)
+                # Post-filter by location if the user specified one
+                if loc_lower and loc_lower not in mapped["location"].lower():
+                    continue
+                results.append(mapped)
                 added += 1
             logger.info(
                 "Remotive: %d internships kept (of %d) in category '%s'",

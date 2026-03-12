@@ -152,12 +152,13 @@ def _map_job(job: dict) -> dict:
     }
 
 
-def fetch_internships(api_key: str, pages_per_query: int = 2) -> list:
+def fetch_internships(api_key: str, location: str = "", pages_per_query: int = 2) -> list:
     """
     Fetch internships from JSearch API.
 
     Args:
         api_key: RapidAPI key with JSearch access.
+        location: Optional location to narrow the search (e.g. "New York", "India").
         pages_per_query: How many pages to fetch per search query (each page = ~10 results).
 
     Returns:
@@ -174,9 +175,11 @@ def fetch_internships(api_key: str, pages_per_query: int = 2) -> list:
 
     results = []
     for query in INTERNSHIP_QUERIES:
+        # Append location to query for geo-targeted results
+        search_query = f"{query} in {location}" if location else query
         for page in range(1, pages_per_query + 1):
             params = {
-                "query": query,
+                "query": search_query,
                 "page": str(page),
                 "num_pages": "1",
                 "employment_types": "INTERN",
