@@ -136,14 +136,6 @@ export default function LoginPage() {
                             Create one
                         </Link>
                     </p>
-
-                    {/* Demo hint */}
-                    <div className="mt-5 bg-brand-500/10 border border-brand-500/20 rounded-xl px-4 py-3">
-                        <p className="text-xs text-gray-400 text-center">
-                            <span className="text-brand-400 font-medium">Demo:</span>{' '}
-                            aryan@example.com / Password1
-                        </p>
-                    </div>
                 </div>
             </div>
         </div>
