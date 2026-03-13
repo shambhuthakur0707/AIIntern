@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
-
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
+import GoogleAuthButton, { isGoogleClientConfigured } from '../components/GoogleAuthButton'
 
 const SKILL_SUGGESTIONS = [
     'Python', 'JavaScript', 'React', 'Node.js', 'SQL', 'TensorFlow', 'PyTorch',
@@ -58,7 +57,7 @@ export default function RegisterPage() {
                 interests: form.skills.slice(0, 3),
             })
             login(data.data.token, data.data.user)
-            navigate('/verify-email', { state: { email: form.email } })
+            navigate('/dashboard')
         } catch (err) {
             setError(err.response?.data?.message || 'Registration failed.')
         } finally {
@@ -66,28 +65,7 @@ export default function RegisterPage() {
         }
     }
 
-    // Initialize Google Sign-In
-    useEffect(() => {
-        if (!GOOGLE_CLIENT_ID) return
-        const script = document.createElement('script')
-        script.src = 'https://accounts.google.com/gsi/client'
-        script.async = true
-        script.defer = true
-        script.onload = () => {
-            window.google?.accounts.id.initialize({
-                client_id: GOOGLE_CLIENT_ID,
-                callback: handleGoogleResponse,
-            })
-            window.google?.accounts.id.renderButton(
-                document.getElementById('google-signup-btn'),
-                { theme: 'filled_black', size: 'large', width: '100%', text: 'signup_with', shape: 'pill' }
-            )
-        }
-        document.head.appendChild(script)
-        return () => { script.remove() }
-    }, []) // eslint-disable-line
-
-    const handleGoogleResponse = async (response) => {
+    const handleGoogleResponse = useCallback(async (response) => {
         setError('')
         setGoogleLoading(true)
         try {
@@ -99,7 +77,11 @@ export default function RegisterPage() {
         } finally {
             setGoogleLoading(false)
         }
-    }
+    }, [login, navigate])
+
+    const handleGoogleScriptError = useCallback(() => {
+        setError('Google Sign-In could not be loaded. Check your Google client ID setup.')
+    }, [])
 
     return (
         <div className="animated-gradient min-h-screen flex items-center justify-center p-4 py-10">
@@ -121,16 +103,15 @@ export default function RegisterPage() {
                     )}
 
                     {/* Google Sign-Up */}
-                    {GOOGLE_CLIENT_ID && (
+                    {isGoogleClientConfigured() && (
                         <>
                             <div className="mb-5">
-                                {googleLoading ? (
-                                    <div className="flex items-center justify-center gap-2 py-3 text-sm text-gray-400">
-                                        <div className="spinner" /> Signing up with Google…
-                                    </div>
-                                ) : (
-                                    <div id="google-signup-btn" className="flex justify-center" />
-                                )}
+                                <GoogleAuthButton
+                                    mode="signup"
+                                    loading={googleLoading}
+                                    onCredential={handleGoogleResponse}
+                                    onError={handleGoogleScriptError}
+                                />
                             </div>
                             <div className="flex items-center gap-3 mb-5">
                                 <div className="flex-1 h-px bg-white/10" />

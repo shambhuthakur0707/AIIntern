@@ -4,7 +4,6 @@ import { ToastProvider } from './context/ToastContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
-import VerifyEmailPage from './pages/VerifyEmailPage'
 import DashboardPage from './pages/DashboardPage'
 import InternshipsPage from './pages/InternshipsPage'
 import ProfilePage from './pages/ProfilePage'
@@ -29,7 +28,6 @@ export default function App() {
                             <Route path="/" element={<Navigate to="/dashboard" replace />} />
                             <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
                             <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
-                            <Route path="/verify-email" element={<VerifyEmailPage />} />
                             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
                             <Route path="/internships" element={<ProtectedRoute><InternshipsPage /></ProtectedRoute>} />
                             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />

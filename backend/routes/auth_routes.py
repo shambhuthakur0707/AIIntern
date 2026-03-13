@@ -1,11 +1,9 @@
 import re
 import logging
-import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from flask import Blueprint, request, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from flask_mail import Message
 from bson import ObjectId
 import bcrypt
 import requests as http_requests
@@ -14,19 +12,20 @@ try:
     from ..models.user_model import create_user_document, sanitize_user
     from ..utils.response_utils import success_response, error_response
     from ..config import Config
-    from ..app import limiter, mail
+    from ..app import limiter
 except ImportError:
     from models.user_model import create_user_document, sanitize_user
     from utils.response_utils import success_response, error_response
     from config import Config
-    from app import limiter, mail
+    from app import limiter
 
 logger = logging.getLogger(__name__)
 
 auth_bp = Blueprint("auth", __name__)
 
 EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
-OTP_EXPIRY_MINUTES = 10
+GOOGLE_ISSUERS = {"accounts.google.com", "https://accounts.google.com"}
+GOOGLE_PLACEHOLDER_CLIENT_IDS = {"", "your-google-client-id"}
 
 
 def _validate_password(password):
@@ -41,27 +40,8 @@ def _validate_password(password):
     return None
 
 
-def _generate_otp():
-    return f"{secrets.randbelow(900000) + 100000}"
-
-
-def _send_otp_email(email, otp):
-    msg = Message(
-        subject="AIIntern - Verify your email",
-        recipients=[email],
-        html=f"""
-        <div style="font-family: sans-serif; max-width: 400px; margin: auto; padding: 24px;">
-            <h2 style="color: #6366f1;">AIIntern Email Verification</h2>
-            <p>Your verification code is:</p>
-            <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; text-align: center; margin: 16px 0;">
-                <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1f2937;">{otp}</span>
-            </div>
-            <p style="color: #6b7280; font-size: 14px;">This code expires in {OTP_EXPIRY_MINUTES} minutes.</p>
-            <p style="color: #9ca3af; font-size: 12px;">If you didn't request this, please ignore this email.</p>
-        </div>
-        """,
-    )
-    mail.send(msg)
+def _google_sign_in_enabled():
+    return (Config.GOOGLE_CLIENT_ID or "").strip() not in GOOGLE_PLACEHOLDER_CLIENT_IDS
 
 
 @auth_bp.route("/register", methods=["POST"])
@@ -106,109 +86,19 @@ def register():
         experience_level=data.get("experience_level", "beginner"),
         education=data.get("education", ""),
     )
-    user_doc["email_verified"] = False
+    user_doc["email_verified"] = True
 
     result = db.users.insert_one(user_doc)
     user_doc["_id"] = result.inserted_id
-
-    # Generate and send OTP
-    otp = _generate_otp()
-    db.otp_codes.insert_one({
-        "email": email,
-        "otp": otp,
-        "purpose": "email_verification",
-        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES),
-        "created_at": datetime.now(timezone.utc),
-    })
-
-    try:
-        _send_otp_email(email, otp)
-    except Exception as exc:
-        logger.error("Failed to send OTP email to %s: %s", email, exc)
 
     token = create_access_token(identity=str(result.inserted_id))
 
     logger.info("User registered: %s", email)
     return success_response(
-        data={"token": token, "user": sanitize_user(user_doc), "email_verified": False},
-        message="User registered. Please verify your email with the OTP sent.",
+        data={"token": token, "user": sanitize_user(user_doc), "email_verified": True},
+        message="Registration successful.",
         status_code=201,
     )
-
-
-@auth_bp.route("/verify-email", methods=["POST"])
-@limiter.limit("10 per minute")
-def verify_email():
-    data = request.get_json()
-    if not data:
-        return error_response("Request body is required", 400)
-
-    email = (data.get("email") or "").lower().strip()
-    otp = (data.get("otp") or "").strip()
-
-    if not email or not otp:
-        return error_response("Email and OTP are required", 400)
-
-    db = current_app.config["DB"]
-
-    record = db.otp_codes.find_one({
-        "email": email,
-        "otp": otp,
-        "purpose": "email_verification",
-        "expires_at": {"$gt": datetime.now(timezone.utc)},
-    })
-
-    if not record:
-        return error_response("Invalid or expired OTP", 400)
-
-    db.users.update_one({"email": email}, {"$set": {"email_verified": True}})
-    db.otp_codes.delete_many({"email": email, "purpose": "email_verification"})
-
-    user = db.users.find_one({"email": email})
-    logger.info("Email verified: %s", email)
-    return success_response(
-        data={"user": sanitize_user(user)},
-        message="Email verified successfully",
-    )
-
-
-@auth_bp.route("/resend-otp", methods=["POST"])
-@limiter.limit("3 per minute")
-def resend_otp():
-    data = request.get_json()
-    if not data:
-        return error_response("Request body is required", 400)
-
-    email = (data.get("email") or "").lower().strip()
-    if not email:
-        return error_response("Email is required", 400)
-
-    db = current_app.config["DB"]
-    user = db.users.find_one({"email": email})
-    if not user:
-        return error_response("User not found", 404)
-
-    if user.get("email_verified"):
-        return error_response("Email already verified", 400)
-
-    db.otp_codes.delete_many({"email": email, "purpose": "email_verification"})
-
-    otp = _generate_otp()
-    db.otp_codes.insert_one({
-        "email": email,
-        "otp": otp,
-        "purpose": "email_verification",
-        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES),
-        "created_at": datetime.now(timezone.utc),
-    })
-
-    try:
-        _send_otp_email(email, otp)
-    except Exception as exc:
-        logger.error("Failed to resend OTP to %s: %s", email, exc)
-        return error_response("Failed to send OTP email", 500)
-
-    return success_response(message="OTP resent successfully")
 
 
 @auth_bp.route("/login", methods=["POST"])
@@ -263,6 +153,9 @@ def google_auth():
     if not data or not data.get("credential"):
         return error_response("Google credential is required", 400)
 
+    if not _google_sign_in_enabled():
+        return error_response("Google sign-in is not configured on the server", 503)
+
     credential = data["credential"]
 
     # Verify the token with Google's tokeninfo endpoint
@@ -284,6 +177,13 @@ def google_auth():
     if google_user.get("aud") != Config.GOOGLE_CLIENT_ID:
         return error_response("Google credential not intended for this app", 401)
 
+    if google_user.get("iss") not in GOOGLE_ISSUERS:
+        return error_response("Invalid Google token issuer", 401)
+
+    email_verified = google_user.get("email_verified")
+    if str(email_verified).lower() != "true":
+        return error_response("Google account email is not verified", 401)
+
     email = google_user.get("email", "").lower().strip()
     name = google_user.get("name", email.split("@")[0])
 
@@ -295,9 +195,16 @@ def google_auth():
 
     if user:
         # Existing user — log in
+        user_updates = {}
         if not user.get("email_verified"):
-            db.users.update_one({"_id": user["_id"]}, {"$set": {"email_verified": True}})
-            user["email_verified"] = True
+            user_updates["email_verified"] = True
+        if not user.get("name") and name:
+            user_updates["name"] = name
+        if not user.get("password_hash"):
+            user_updates["auth_provider"] = "google"
+        if user_updates:
+            db.users.update_one({"_id": user["_id"]}, {"$set": user_updates})
+            user.update(user_updates)
     else:
         # New user — register
         user_doc = create_user_document(
@@ -431,8 +338,8 @@ def change_password():
 @auth_bp.route("/change-email", methods=["POST"])
 @jwt_required()
 @limiter.limit("3 per minute")
-def change_email_request():
-    """POST /api/auth/change-email — send OTP to new email to verify ownership."""
+def change_email():
+    """POST /api/auth/change-email — update email address directly."""
     user_id = get_jwt_identity()
     data = request.get_json() or {}
 
@@ -454,79 +361,14 @@ def change_email_request():
     if current_user.get("email") == new_email:
         return error_response("New email must be different from current email", 400)
 
-    # Store OTP against new email for verification
-    db.otp_codes.delete_many({"user_id": user_id, "purpose": "email_change"})
-    otp = _generate_otp()
-    db.otp_codes.insert_one({
-        "user_id": user_id,
-        "email": new_email,
-        "otp": otp,
-        "purpose": "email_change",
-        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES),
-        "created_at": datetime.now(timezone.utc),
-    })
-
-    try:
-        msg = Message(
-            subject="AIIntern - Confirm your new email",
-            recipients=[new_email],
-            html=f"""
-            <div style="font-family: sans-serif; max-width: 400px; margin: auto; padding: 24px;">
-                <h2 style="color: #6366f1;">Confirm Email Change</h2>
-                <p>Enter this code in AIIntern to confirm your new email address:</p>
-                <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; text-align: center; margin: 16px 0;">
-                    <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1f2937;">{otp}</span>
-                </div>
-                <p style="color: #6b7280; font-size: 14px;">This code expires in {OTP_EXPIRY_MINUTES} minutes.</p>
-                <p style="color: #9ca3af; font-size: 12px;">If you didn't request this, please ignore this email.</p>
-            </div>
-            """,
-        )
-        mail.send(msg)
-    except Exception as exc:
-        logger.error("Failed to send email-change OTP to %s: %s", new_email, exc)
-        return error_response("Failed to send verification email", 500)
-
-    return success_response(message=f"Verification code sent to {new_email}")
-
-
-@auth_bp.route("/verify-email-change", methods=["POST"])
-@jwt_required()
-@limiter.limit("5 per minute")
-def verify_email_change():
-    """POST /api/auth/verify-email-change — confirm OTP and update email."""
-    user_id = get_jwt_identity()
-    data = request.get_json() or {}
-
-    new_email = (data.get("new_email") or "").lower().strip()
-    otp = (data.get("otp") or "").strip()
-
-    if not new_email or not otp:
-        return error_response("new_email and otp are required", 400)
-
-    db = current_app.config["DB"]
-
-    record = db.otp_codes.find_one({
-        "user_id": user_id,
-        "email": new_email,
-        "otp": otp,
-        "purpose": "email_change",
-        "expires_at": {"$gt": datetime.now(timezone.utc)},
-    })
-
-    if not record:
-        return error_response("Invalid or expired verification code", 400)
-
-    # Double-check email not taken (race condition guard)
-    if db.users.find_one({"email": new_email}):
-        return error_response("This email is already in use", 409)
-
     db.users.update_one(
         {"_id": ObjectId(user_id)},
         {"$set": {"email": new_email, "email_verified": True, "updated_at": datetime.now(timezone.utc)}},
     )
-    db.otp_codes.delete_many({"user_id": user_id, "purpose": "email_change"})
 
     user = db.users.find_one({"_id": ObjectId(user_id)})
     logger.info("Email changed for user %s to %s", user_id, new_email)
     return success_response(data={"user": sanitize_user(user)}, message="Email updated successfully")
+
+
+

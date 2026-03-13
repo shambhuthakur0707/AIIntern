@@ -4,7 +4,6 @@ from flask_jwt_extended import JWTManager
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from flask_mail import Mail
 from pymongo import MongoClient
 
 try:
@@ -12,7 +11,6 @@ try:
 except ImportError:
     from config import Config
 
-mail = Mail()
 limiter = Limiter(key_func=get_remote_address, default_limits=["200 per hour"])
 
 
@@ -22,19 +20,10 @@ def create_app():
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=2)
     app.config["MAX_CONTENT_LENGTH"] = Config.MAX_CONTENT_LENGTH
 
-    # Mail config
-    app.config["MAIL_SERVER"] = Config.MAIL_SERVER
-    app.config["MAIL_PORT"] = Config.MAIL_PORT
-    app.config["MAIL_USE_TLS"] = Config.MAIL_USE_TLS
-    app.config["MAIL_USERNAME"] = Config.MAIL_USERNAME
-    app.config["MAIL_PASSWORD"] = Config.MAIL_PASSWORD
-    app.config["MAIL_DEFAULT_SENDER"] = Config.MAIL_DEFAULT_SENDER
-
     # Extensions
     JWTManager(app)
     CORS(app, origins=Config.CORS_ORIGINS, supports_credentials=True)
     limiter.init_app(app)
-    mail.init_app(app)
 
     # Security headers
     @app.after_request

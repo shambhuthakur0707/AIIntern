@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
-
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
+import GoogleAuthButton, { isGoogleClientConfigured } from '../components/GoogleAuthButton'
 
 export default function LoginPage() {
     const [form, setForm] = useState({ email: '', password: '' })
@@ -21,10 +20,6 @@ export default function LoginPage() {
         setLoading(true)
         try {
             const { data } = await api.post('/auth/login', form)
-            if (data.data.email_verified === false) {
-                navigate('/verify-email', { state: { email: form.email } })
-                return
-            }
             login(data.data.token, data.data.user)
             navigate('/dashboard')
         } catch (err) {
@@ -34,28 +29,7 @@ export default function LoginPage() {
         }
     }
 
-    // Initialize Google Sign-In
-    useEffect(() => {
-        if (!GOOGLE_CLIENT_ID) return
-        const script = document.createElement('script')
-        script.src = 'https://accounts.google.com/gsi/client'
-        script.async = true
-        script.defer = true
-        script.onload = () => {
-            window.google?.accounts.id.initialize({
-                client_id: GOOGLE_CLIENT_ID,
-                callback: handleGoogleResponse,
-            })
-            window.google?.accounts.id.renderButton(
-                document.getElementById('google-signin-btn'),
-                { theme: 'filled_black', size: 'large', width: '100%', text: 'signin_with', shape: 'pill' }
-            )
-        }
-        document.head.appendChild(script)
-        return () => { script.remove() }
-    }, []) // eslint-disable-line
-
-    const handleGoogleResponse = async (response) => {
+    const handleGoogleResponse = useCallback(async (response) => {
         setError('')
         setGoogleLoading(true)
         try {
@@ -67,7 +41,11 @@ export default function LoginPage() {
         } finally {
             setGoogleLoading(false)
         }
-    }
+    }, [login, navigate])
+
+    const handleGoogleScriptError = useCallback(() => {
+        setError('Google Sign-In could not be loaded. Check your Google client ID setup.')
+    }, [])
 
     return (
         <div className="animated-gradient min-h-screen flex items-center justify-center p-4">
@@ -78,7 +56,7 @@ export default function LoginPage() {
                     <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-500 to-violet-500 shadow-xl shadow-brand-500/30 mb-4">
                         <span className="text-2xl font-black text-white">AI</span>
                     </div>
-                    <h1 className="text-3xl font-extrabold text-white">Welcome back</h1>
+                    <h1 className="text-3xl font-extrabold text-white">AIIntern</h1>
                     <p className="text-gray-400 mt-1.5">Sign in to your AIIntern account</p>
                 </div>
 
@@ -91,16 +69,15 @@ export default function LoginPage() {
                     )}
 
                     {/* Google Sign-In */}
-                    {GOOGLE_CLIENT_ID && (
+                    {isGoogleClientConfigured() && (
                         <>
                             <div className="mb-5">
-                                {googleLoading ? (
-                                    <div className="flex items-center justify-center gap-2 py-3 text-sm text-gray-400">
-                                        <div className="spinner" /> Signing in with Google…
-                                    </div>
-                                ) : (
-                                    <div id="google-signin-btn" className="flex justify-center" />
-                                )}
+                                <GoogleAuthButton
+                                    mode="signin"
+                                    loading={googleLoading}
+                                    onCredential={handleGoogleResponse}
+                                    onError={handleGoogleScriptError}
+                                />
                             </div>
                             <div className="flex items-center gap-3 mb-5">
                                 <div className="flex-1 h-px bg-white/10" />

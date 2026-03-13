@@ -43,9 +43,7 @@ export default function ProfilePage() {
     const [savingPw, setSavingPw] = useState(false)
 
     // Change email
-    const [emailStep, setEmailStep] = useState('input') // 'input' | 'otp'
     const [newEmail, setNewEmail] = useState('')
-    const [emailOtp, setEmailOtp] = useState('')
     const [savingEmail, setSavingEmail] = useState(false)
 
     useEffect(() => {
@@ -127,34 +125,17 @@ export default function ProfilePage() {
         }
     }
 
-    const handleRequestEmailOtp = async (e) => {
+    const handleChangeEmail = async (e) => {
         e.preventDefault()
         setSavingEmail(true)
         try {
-            await api.post('/auth/change-email', { new_email: newEmail })
-            toast({ message: `Verification code sent to ${newEmail}`, type: 'success' })
-            setEmailStep('otp')
-        } catch (err) {
-            const msg = err?.response?.data?.message ?? err?.response?.data?.error ?? 'Failed to send code.'
-            toast({ message: msg, type: 'error' })
-        } finally {
-            setSavingEmail(false)
-        }
-    }
-
-    const handleVerifyEmailOtp = async (e) => {
-        e.preventDefault()
-        setSavingEmail(true)
-        try {
-            const { data } = await api.post('/auth/verify-email-change', { new_email: newEmail, otp: emailOtp })
+            const { data } = await api.post('/auth/change-email', { new_email: newEmail })
             if (updateUser) updateUser({ ...(user ?? {}), ...data.data?.user })
             setForm((prev) => ({ ...prev, email: newEmail }))
             toast({ message: 'Email updated successfully!', type: 'success' })
-            setEmailStep('input')
             setNewEmail('')
-            setEmailOtp('')
         } catch (err) {
-            const msg = err?.response?.data?.message ?? err?.response?.data?.error ?? 'Failed to verify code.'
+            const msg = err?.response?.data?.message ?? err?.response?.data?.error ?? 'Failed to update email.'
             toast({ message: msg, type: 'error' })
         } finally {
             setSavingEmail(false)
@@ -278,41 +259,18 @@ export default function ProfilePage() {
                             {/* Change email */}
                             <div className="space-y-3">
                                 <h3 className="text-sm font-semibold text-gray-700">Change Email</h3>
-                                <p className="text-xs text-gray-500">A verification code will be sent to your new email address.</p>
-                                {emailStep === 'input' ? (
-                                    <form onSubmit={handleRequestEmailOtp} className="flex gap-2">
-                                        <input
-                                            type="email"
-                                            value={newEmail}
-                                            onChange={(e) => setNewEmail(e.target.value)}
-                                            className={`${inputCls} flex-1`}
-                                            placeholder="new@email.com"
-                                        />
-                                        <button type="submit" disabled={savingEmail || !newEmail.trim()} className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition disabled:opacity-60 whitespace-nowrap">
-                                            {savingEmail ? 'Sending…' : 'Send Code'}
-                                        </button>
-                                    </form>
-                                ) : (
-                                    <form onSubmit={handleVerifyEmailOtp} className="space-y-3">
-                                        <p className="text-sm text-gray-600">Enter the 6-digit code sent to <strong>{newEmail}</strong></p>
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                value={emailOtp}
-                                                onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                                className={`${inputCls} flex-1 tracking-widest text-center text-lg font-bold`}
-                                                placeholder="000000"
-                                                maxLength={6}
-                                            />
-                                            <button type="submit" disabled={savingEmail || emailOtp.length !== 6} className="px-5 py-2.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold transition disabled:opacity-60 whitespace-nowrap">
-                                                {savingEmail ? 'Verifying…' : 'Confirm'}
-                                            </button>
-                                        </div>
-                                        <button type="button" onClick={() => { setEmailStep('input'); setEmailOtp('') }} className="text-xs text-indigo-600 hover:underline">
-                                            ← Use a different email
-                                        </button>
-                                    </form>
-                                )}
+                                <form onSubmit={handleChangeEmail} className="flex gap-2">
+                                    <input
+                                        type="email"
+                                        value={newEmail}
+                                        onChange={(e) => setNewEmail(e.target.value)}
+                                        className={`${inputCls} flex-1`}
+                                        placeholder="new@email.com"
+                                    />
+                                    <button type="submit" disabled={savingEmail || !newEmail.trim()} className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition disabled:opacity-60 whitespace-nowrap">
+                                        {savingEmail ? 'Updating…' : 'Update'}
+                                    </button>
+                                </form>
                             </div>
 
                             <hr className="border-gray-200" />

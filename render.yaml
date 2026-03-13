@@ -1,0 +1,54 @@
+services:
+  # ── Backend (Flask + Gunicorn) ─────────────────────────────────────────
+  - type: web
+    name: aiintern-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn 'app:create_app()' --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: MONGO_URI
+        sync: false          # set in Render dashboard
+      - key: JWT_SECRET_KEY
+        sync: false          # set in Render dashboard (long random string)
+      - key: FLASK_DEBUG
+        value: "False"
+      - key: FLASK_ENV
+        value: production
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.1-8b-instant
+      - key: GROQ_TIMEOUT_SEC
+        value: "30"
+      - key: LLM_MAX_RETRIES
+        value: "1"
+      - key: GOOGLE_CLIENT_ID
+        sync: false          # same value as frontend VITE_GOOGLE_CLIENT_ID
+      - key: CORS_ORIGINS
+        sync: false          # set to your frontend Render URL e.g. https://aiintern.onrender.com
+      - key: JSEARCH_API_KEY
+        sync: false
+      - key: ADZUNA_APP_ID
+        sync: false
+      - key: ADZUNA_API_KEY
+        sync: false
+
+  # ── Frontend (Vite / React static site) ──────────────────────────────
+  - type: web
+    name: aiintern-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false          # set to backend URL e.g. https://aiintern-backend.onrender.com/api
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

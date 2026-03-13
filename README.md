@@ -388,6 +388,15 @@ npm run dev          # starts at http://localhost:5173
 
 The Vite dev server proxies `/api` requests to the Flask backend on port 5000.
 
+### Google Sign-In Setup
+
+1. Create a Google OAuth Web application in Google Cloud Console.
+2. Add your frontend origin to `Authorized JavaScript origins`.
+3. Set the same web client ID in both `frontend/.env` as `VITE_GOOGLE_CLIENT_ID` and `backend/.env` as `GOOGLE_CLIENT_ID`.
+4. Restart both frontend and backend after updating the env files.
+
+The Google sign-in button is hidden automatically when the frontend client ID is missing or still set to the placeholder value.
+
 ---
 
 ## Models & Algorithms Summary
