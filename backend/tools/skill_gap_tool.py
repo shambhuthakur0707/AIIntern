@@ -6,9 +6,21 @@ a structured week-by-week learning roadmap.
 """
 
 import json
+from abc import ABC, abstractmethod
 from typing import Type, List, Dict, Any
-from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
+
+
+class BaseTool(ABC):
+    name: str = ""
+    description: str = ""
+    args_schema: Type[BaseModel] = None
+
+    @abstractmethod
+    def _run(self, *args, **kwargs): ...
+
+    async def _arun(self, *args, **kwargs):
+        return self._run(*args, **kwargs)
 
 
 # Curated learning resource map

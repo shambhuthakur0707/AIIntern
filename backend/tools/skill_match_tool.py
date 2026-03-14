@@ -7,8 +7,20 @@ using TF-IDF cosine similarity as a fast, interpretable baseline.
 
 import json
 from typing import Type, List, Dict, Any
-from langchain.tools import BaseTool
+from abc import ABC, abstractmethod
 from pydantic import BaseModel, Field
+
+
+class BaseTool(ABC):
+    name: str = ""
+    description: str = ""
+    args_schema = None
+
+    @abstractmethod
+    def _run(self, *args, **kwargs): ...
+
+    async def _arun(self, *args, **kwargs):
+        return self._run(*args, **kwargs)
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
