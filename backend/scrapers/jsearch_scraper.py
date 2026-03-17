@@ -10,6 +10,11 @@ import logging
 import requests
 from datetime import datetime
 
+try:
+    from ..tools.skill_extraction import extract_skills_from_title_and_description
+except ImportError:
+    from tools.skill_extraction import extract_skills_from_title_and_description
+
 logger = logging.getLogger(__name__)
 
 JSEARCH_BASE_URL = "https://jsearch.p.rapidapi.com/search"
@@ -48,45 +53,6 @@ DOMAIN_KEYWORDS = {
     "ux designer": "UI/UX Design",
 }
 
-SKILL_KEYWORDS = [
-    "Python", "JavaScript", "TypeScript", "React", "Node.js", "Java", "C++", "C#",
-    "Go", "Rust", "SQL", "MongoDB", "PostgreSQL", "MySQL", "Redis", "Docker",
-    "Kubernetes", "AWS", "GCP", "Azure", "TensorFlow", "PyTorch", "Pandas",
-    "NumPy", "Scikit-learn", "FastAPI", "Flask", "Django", "Spring Boot",
-    "Git", "Linux", "REST API", "GraphQL", "HTML", "CSS", "Vue.js", "Angular",
-    "Swift", "Kotlin", "Flutter", "React Native", "Figma", "Apache Spark", "Kafka",
-    "Hadoop", "R", "MATLAB", "Tableau", "Power BI", "Selenium", "Jenkins", "Terraform",
-]
-
-INTERNSHIP_QUERIES = [
-    "software engineering internship",
-    "data science internship",
-    "machine learning internship",
-    "web development internship",
-    "cybersecurity internship",
-    "cloud computing internship",
-    "frontend developer internship",
-    "backend developer internship",
-    "devops internship",
-    "mobile app development internship",
-    "AI internship",
-    "product management internship",
-    "UI UX design internship",
-]
-
-# Words that confirm the listing is an internship
-_INTERN_MARKERS = {
-    "intern", "internship", "trainee", "apprentice",
-    "co-op", "coop", "working student", "placement",
-}
-
-
-def _is_internship(title: str, description: str) -> bool:
-    """Return True only if the listing looks like an actual internship."""
-    combined = (title + " " + description).lower()
-    return any(marker in combined for marker in _INTERN_MARKERS)
-
-
 def _infer_domain(title: str, description: str) -> str:
     combined = (title + " " + description).lower()
     for keyword, domain in DOMAIN_KEYWORDS.items():
@@ -95,16 +61,7 @@ def _infer_domain(title: str, description: str) -> str:
     return "Software Engineering"
 
 
-def _extract_skills(description: str) -> list:
-    found = []
-    desc_lower = description.lower()
-    for skill in SKILL_KEYWORDS:
-        if skill.lower() in desc_lower:
-            found.append(skill)
-    return found[:10]
-
-
-def _build_location(job: dict) -> str:
+def _map_job(job: dict) -> dict:
     if job.get("job_is_remote"):
         return "Remote"
     city = job.get("job_city", "")
@@ -139,7 +96,7 @@ def _map_job(job: dict) -> dict:
     return {
         "title": title,
         "company": company,
-        "required_skills": _extract_skills(description),
+        "required_skills": extract_skills_from_title_and_description(title, description),
         "description": description[:1200] if description else "",
         "domain": _infer_domain(title, description),
         "stipend": _build_stipend(job),

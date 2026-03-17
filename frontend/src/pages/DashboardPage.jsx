@@ -142,11 +142,11 @@ function RecCard({ rec, index }) {
                 </div>
             )}
 
-            {roadmap.length > 0 && (
+            {(rec.missing_skills ?? []).length > 0 && roadmap.length > 0 && (
                 <div className="border-t border-white/5">
                     <div className="flex items-center justify-between px-5 py-3">
                         <button type="button" onClick={() => setOpen(o => !o)} className="text-xs text-gray-400 hover:text-white transition-colors flex items-center gap-1">
-                            📝 Roadmap ({roadmap.length} weeks)
+                            📝 Learning Plan for Missing Skills ({roadmap.length} weeks)
                             <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                         </button>
                         {open && <button type="button" onClick={copyRoadmap} className="text-[10px] text-gray-500 hover:text-gray-300">{copied ? '✓ Copied' : '⎘ Copy'}</button>}
@@ -156,7 +156,7 @@ function RecCard({ rec, index }) {
                             {roadmap.map((week, wi) => (
                                 <div key={wi} className="flex gap-3 text-xs">
                                     <span className="shrink-0 w-14 text-indigo-400 font-medium">Week {wi + 1}</span>
-                                    <span className="text-gray-400">{week.goal ?? week.topic ?? JSON.stringify(week)}</span>
+                                    <span className="text-gray-400">{week.focus ?? week.goal ?? week.topic ?? JSON.stringify(week)}</span>
                                 </div>
                             ))}
                         </div>
@@ -247,7 +247,8 @@ export default function DashboardPage() {
         try {
             const { data } = await api.patch('/profile/skills/add', { skill })
             updateUser(data.data.user); setSkillInput('')
-            toast({ message: `Added: ${skill}`, type: 'success' })
+            setMatchResult(null) // Clear match result so user knows to re-run agent
+            toast({ message: `Added: ${skill} — Run Agent to update recommendations`, type: 'success' })
         } catch (err) { toast({ message: err.response?.data?.message || 'Could not add skill.', type: 'error' }) }
         finally { setProfileBusy(false) }
     }
@@ -256,7 +257,9 @@ export default function DashboardPage() {
         setProfileBusy(true)
         try {
             const { data } = await api.patch('/profile/skills/remove', { skill })
-            updateUser(data.data.user); toast({ message: `Removed: ${skill}`, type: 'info' })
+            updateUser(data.data.user); 
+            setMatchResult(null) // Clear match result so user knows to re-run agent
+            toast({ message: `Removed: ${skill} — Run Agent to update recommendations`, type: 'info' })
         } catch (err) { toast({ message: err.response?.data?.message || 'Could not remove.', type: 'error' }) }
         finally { setProfileBusy(false) }
     }
@@ -270,8 +273,9 @@ export default function DashboardPage() {
             if (cvFile) formData.append('cv', cvFile)
             const { data } = await api.post('/profile/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
             updateUser(data.data.user); setCvFile(null)
+            setMatchResult(null) // Clear match result so user knows to re-run agent
             const c = data.data.imported_skills?.length || 0
-            toast({ message: `Imported ${c} skill${c !== 1 ? 's' : ''}.`, type: 'success' })
+            toast({ message: `Imported ${c} skill${c !== 1 ? 's' : ''} — Run Agent to update recommendations`, type: 'success' })
         } catch (err) { toast({ message: err.response?.data?.message || 'Import failed.', type: 'error' }) }
         finally { setProfileBusy(false) }
     }

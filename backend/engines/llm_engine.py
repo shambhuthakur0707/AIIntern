@@ -165,6 +165,8 @@ def _build_prompt(
         f"MATCH SCORE: {internship.get('weighted_score', 0)}%\n"
         f"MATCHED SKILLS: {', '.join(internship.get('matched_skills', []))}\n"
         f"MISSING SKILLS: {', '.join(internship.get('missing_skills', []))}\n\n"
+        "IMPORTANT: The learning_roadmap must focus ONLY on acquiring the MISSING SKILLS listed above.\n"
+        "Each week should build skills needed to fill the gaps for this internship.\n"
         "Return this EXACT JSON structure (fill in all values):\n"
         "{\n"
         '  "confidence_score": <number 0-100>,\n'
@@ -173,12 +175,12 @@ def _build_prompt(
         '  "missing_skills": ["<missing skill 1>", "<missing skill 2>"],\n'
         '  "skill_gap_analysis": "<how far user is from ideal candidate>",\n'
         '  "learning_roadmap": [\n'
-        '    {"week": 1, "focus": "<topic>", "tasks": ["<task1>", "<task2>"]},\n'
-        '    {"week": 2, "focus": "<topic>", "tasks": ["<task1>", "<task2>"]},\n'
-        '    {"week": 3, "focus": "<topic>", "tasks": ["<task1>", "<task2>"]},\n'
-        '    {"week": 4, "focus": "<topic>", "tasks": ["<task1>", "<task2>"]}\n'
+        '    {"week": 1, "focus": "<MISSING SKILL 1 or topic>", "tasks": ["<task1>", "<task2>"]},\n'
+        '    {"week": 2, "focus": "<MISSING SKILL 2 or related topic>", "tasks": ["<task1>", "<task2>"]},\n'
+        '    {"week": 3, "focus": "<MISSING SKILL 3 or related topic>", "tasks": ["<task1>", "<task2>"]},\n'
+        '    {"week": 4, "focus": "<MISSING SKILL 4 or synthesis>", "tasks": ["<task1>", "<task2>"]}\n'
         "  ],\n"
-        '  "improvement_priority": "<what to learn first and why>"\n'
+        '  "improvement_priority": "<what to learn first from MISSING SKILLS and why>"\n'
         "}"
     )
 

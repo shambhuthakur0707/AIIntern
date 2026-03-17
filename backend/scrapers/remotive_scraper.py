@@ -9,18 +9,14 @@ import logging
 import requests
 from datetime import datetime
 
+try:
+    from ..tools.skill_extraction import extract_skills_from_title_and_description
+except ImportError:
+    from tools.skill_extraction import extract_skills_from_title_and_description
+
 logger = logging.getLogger(__name__)
 
 REMOTIVE_URL = "https://remotive.com/api/remote-jobs"
-
-SKILL_KEYWORDS = [
-    "Python", "JavaScript", "TypeScript", "React", "Node.js", "Java", "C++", "C#",
-    "Go", "Rust", "SQL", "MongoDB", "PostgreSQL", "MySQL", "Redis", "Docker",
-    "Kubernetes", "AWS", "GCP", "Azure", "TensorFlow", "PyTorch", "Pandas",
-    "NumPy", "Scikit-learn", "FastAPI", "Flask", "Django", "Spring Boot",
-    "Git", "Linux", "REST API", "GraphQL", "HTML", "CSS", "Vue.js", "Angular",
-    "Swift", "Kotlin", "Flutter", "React Native", "Figma", "Kafka", "Terraform",
-]
 
 CATEGORIES = [
     "software-dev",
@@ -44,15 +40,6 @@ def _is_internship(title: str, description: str) -> bool:
     return any(marker in combined for marker in _INTERN_MARKERS)
 
 
-def _extract_skills(description: str) -> list:
-    found = []
-    desc_lower = description.lower()
-    for skill in SKILL_KEYWORDS:
-        if skill.lower() in desc_lower:
-            found.append(skill)
-    return found[:10]
-
-
 def _map_job(job: dict) -> dict:
     title = job.get("title", "Internship")
     company = job.get("company_name", "Unknown Company")
@@ -64,7 +51,7 @@ def _map_job(job: dict) -> dict:
     return {
         "title": title,
         "company": company,
-        "required_skills": _extract_skills(description),
+        "required_skills": extract_skills_from_title_and_description(title, description),
         "description": description[:1200] if description else "",
         "domain": job.get("category", "Software Development"),
         "stipend": job.get("salary") or "Not disclosed",

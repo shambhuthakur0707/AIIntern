@@ -10,6 +10,11 @@ import logging
 import requests
 from datetime import datetime
 
+try:
+    from ..tools.skill_extraction import extract_skills_from_title_and_description
+except ImportError:
+    from tools.skill_extraction import extract_skills_from_title_and_description
+
 logger = logging.getLogger(__name__)
 
 ADZUNA_BASE = "https://api.adzuna.com/v1/api/jobs"
@@ -64,15 +69,6 @@ DOMAIN_KEYWORDS = {
     "ui/ux": "UI/UX Design",
 }
 
-SKILL_KEYWORDS = [
-    "Python", "JavaScript", "TypeScript", "React", "Node.js", "Java", "C++", "C#",
-    "Go", "Rust", "SQL", "MongoDB", "PostgreSQL", "MySQL", "Redis", "Docker",
-    "Kubernetes", "AWS", "GCP", "Azure", "TensorFlow", "PyTorch", "Pandas",
-    "NumPy", "Scikit-learn", "FastAPI", "Flask", "Django", "Spring Boot",
-    "Git", "Linux", "REST API", "GraphQL", "HTML", "CSS", "Vue.js", "Angular",
-    "Swift", "Kotlin", "Flutter", "React Native", "Figma", "Kafka", "Terraform",
-]
-
 
 def _infer_domain(title: str, description: str) -> str:
     combined = (title + " " + description).lower()
@@ -80,15 +76,6 @@ def _infer_domain(title: str, description: str) -> str:
         if keyword in combined:
             return domain
     return "Software Engineering"
-
-
-def _extract_skills(description: str) -> list:
-    found = []
-    desc_lower = description.lower()
-    for skill in SKILL_KEYWORDS:
-        if skill.lower() in desc_lower:
-            found.append(skill)
-    return found[:10]
 
 
 def _build_location(job: dict, country: str) -> str:
@@ -119,7 +106,7 @@ def _map_job(job: dict, country: str) -> dict:
     return {
         "title": title,
         "company": company,
-        "required_skills": _extract_skills(description),
+        "required_skills": extract_skills_from_title_and_description(title, description),
         "description": description[:1200] if description else "",
         "domain": _infer_domain(title, description),
         "stipend": _build_stipend(job),
