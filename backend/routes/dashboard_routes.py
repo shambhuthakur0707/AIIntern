@@ -4,13 +4,13 @@ try:
     from ..utils.jwt_utils import get_current_user
     from ..utils.response_utils import success_response, error_response
     from ..models.user_model import sanitize_user
-    from ..services.user_service import add_user_skill, remove_user_skill, update_user_profile_sources
+    from ..services.user_service import add_user_skill, remove_user_skill, update_user_profile_sources, refresh_user_match_result
     from ..services.profile_import_service import extract_profile_from_sources
 except ImportError:
     from utils.jwt_utils import get_current_user
     from utils.response_utils import success_response, error_response
     from models.user_model import sanitize_user
-    from services.user_service import add_user_skill, remove_user_skill, update_user_profile_sources
+    from services.user_service import add_user_skill, remove_user_skill, update_user_profile_sources, refresh_user_match_result
     from services.profile_import_service import extract_profile_from_sources
 
 dashboard_bp = Blueprint("dashboard", __name__)
@@ -30,6 +30,8 @@ def get_dashboard():
     user = get_current_user()
     if not user:
         return error_response("User not found", 404)
+
+    user = refresh_user_match_result(user)
 
     last_match = user.get("last_match_result")
 
@@ -155,4 +157,97 @@ def import_profile_sources():
             "resume_uploaded": bool(cv_text),
         },
         message="Profile imported from CV and platform links.",
+    )
+
+
+@dashboard_bp.route("/statistics", methods=["GET"])
+@jwt_required()
+def get_statistics():
+    """
+    GET /api/statistics
+    Returns comprehensive user statistics and profile metrics.
+    """
+    user = get_current_user()
+    if not user:
+        return error_response("User not found", 404)
+
+    user = refresh_user_match_result(user)
+    last_match = user.get("last_match_result")
+
+    # Profile completeness calculation
+    profile_fields = {
+        "name": user.get("name"),
+        "email": user.get("email"),
+        "skills": user.get("skills"),
+        "interests": user.get("interests"),
+        "experience_level": user.get("experience_level"),
+        "education": user.get("education"),
+        "linkedin_url": user.get("linkedin_url"),
+        "github_url": user.get("github_url"),
+        "resume_text": user.get("resume_text"),
+    }
+    filled_fields = sum(1 for v in profile_fields.values() if v)
+    profile_completeness = int((filled_fields / len(profile_fields)) * 100)
+
+    # Match statistics
+    match_stats = {
+        "total_matches": 0,
+        "avg_confidence": 0,
+        "best_match": None,
+        "top_skills_matched": [],
+        "top_skills_missing": [],
+    }
+
+    if last_match:
+        recommendations = last_match.get("recommendations", [])
+        match_stats["total_matches"] = len(recommendations)
+
+        if recommendations:
+            confidences = [
+                float(r.get("confidence_score", 0))
+                for r in recommendations
+                if r.get("confidence_score")
+            ]
+            if confidences:
+                match_stats["avg_confidence"] = round(sum(confidences) / len(confidences), 1)
+                match_stats["best_match"] = {
+                    "title": recommendations[0].get("internship_title"),
+                    "company": recommendations[0].get("company"),
+                    "confidence": float(recommendations[0].get("confidence_score", 0)),
+                }
+
+            # Aggregate skills
+            all_matched = {}
+            all_missing = {}
+            for rec in recommendations:
+                matched_skills = rec.get("matched_skills", [])
+                missing_skills = rec.get("missing_skills", [])
+
+                for skill in matched_skills:
+                    all_matched[skill] = all_matched.get(skill, 0) + 1
+
+                for skill in missing_skills:
+                    all_missing[skill] = all_missing.get(skill, 0) + 1
+
+            match_stats["top_skills_matched"] = sorted(
+                all_matched.items(), key=lambda x: x[1], reverse=True
+            )[:5]
+            match_stats["top_skills_missing"] = sorted(
+                all_missing.items(), key=lambda x: x[1], reverse=True
+            )[:5]
+
+    return success_response(
+        data={
+            "user": sanitize_user(user),
+            "profile_completeness": profile_completeness,
+            "skills_count": len(user.get("skills", [])),
+            "interests_count": len(user.get("interests", [])),
+            "experience_level": user.get("experience_level", "Not set"),
+            "education": user.get("education", "Not set"),
+            "has_resume": bool(user.get("resume_text")),
+            "has_linkedin": bool(user.get("linkedin_url")),
+            "has_github": bool(user.get("github_url")),
+            "match_stats": match_stats,
+        },
+        message="Statistics loaded successfully",
     )

@@ -10,9 +10,21 @@ import requests
 from datetime import datetime
 
 try:
-    from ..tools.skill_extraction import extract_skills_from_title_and_description
+    from .internship_filters import (
+        extract_required_skills,
+        is_internship_listing,
+        location_matches_hint,
+        normalize_india_state_location,
+        normalize_text,
+    )
 except ImportError:
-    from tools.skill_extraction import extract_skills_from_title_and_description
+    from scrapers.internship_filters import (  # type: ignore
+        extract_required_skills,
+        is_internship_listing,
+        location_matches_hint,
+        normalize_india_state_location,
+        normalize_text,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -27,36 +39,34 @@ CATEGORIES = [
     "qa",
 ]
 
-# Words that confirm the listing is an internship
-_INTERN_MARKERS = {
-    "intern", "internship", "trainee", "apprentice",
-    "co-op", "coop", "working student", "placement",
-}
-
-
-def _is_internship(title: str, description: str) -> bool:
-    """Return True only if the listing looks like an actual internship."""
-    combined = (title + " " + description).lower()
-    return any(marker in combined for marker in _INTERN_MARKERS)
-
-
 def _map_job(job: dict) -> dict:
     title = job.get("title", "Internship")
     company = job.get("company_name", "Unknown Company")
     description = job.get("description", "")
-    location = job.get("candidate_required_location") or ""
-    if not location or location.lower() in ("", "worldwide", "anywhere"):
-        location = "Remote"
+    raw_location = job.get("candidate_required_location") or ""
+    normalized_location = normalize_india_state_location(raw_location)
+    if not normalized_location:
+        return {}
+
+    tags = job.get("tags") or []
+    requirement_text = " ".join(str(tag) for tag in tags if tag)
+    skills = extract_required_skills(
+        title=title,
+        description=description,
+        requirement_text=requirement_text,
+    )
+    if not skills:
+        return {}
 
     return {
         "title": title,
         "company": company,
-        "required_skills": extract_skills_from_title_and_description(title, description),
+        "required_skills": skills,
         "description": description[:1200] if description else "",
         "domain": job.get("category", "Software Development"),
         "stipend": job.get("salary") or "Not disclosed",
         "duration": "3–6 months",
-        "location": location,
+        "location": normalized_location,
         "openings": 1,
         "apply_url": job.get("url", ""),
         "source": "remotive",
@@ -76,7 +86,7 @@ def fetch_internships(location: str = "") -> list:
     Returns:
         List of internship dicts ready for MongoDB insertion.
     """
-    loc_lower = (location or "").strip().lower()
+    location_hint = normalize_text(location)
     results = []
     for category in CATEGORIES:
         params = {
@@ -92,11 +102,12 @@ def fetch_internships(location: str = "") -> list:
             for job in jobs:
                 title = job.get("title", "")
                 desc = job.get("description", "")
-                if not _is_internship(title, desc):
+                if not is_internship_listing(title, desc):
                     continue
                 mapped = _map_job(job)
-                # Post-filter by location if the user specified one
-                if loc_lower and loc_lower not in mapped["location"].lower():
+                if not mapped:
+                    continue
+                if not location_matches_hint(mapped["location"], location_hint):
                     continue
                 results.append(mapped)
                 added += 1

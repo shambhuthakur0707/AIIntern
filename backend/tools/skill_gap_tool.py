@@ -59,6 +59,19 @@ def _get_resource(skill: str) -> dict:
     }
 
 
+def _unique_case_insensitive(items: List[str]) -> List[str]:
+    """De-duplicate while preserving order, case-insensitive."""
+    seen = set()
+    unique = []
+    for item in items:
+        key = item.lower().strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append(item.strip())
+    return unique
+
+
 class SkillGapInput(BaseModel):
     user_skills: List[str] = Field(
         description="List of user's current skills"
@@ -81,7 +94,7 @@ class SkillGapAnalysisTool(BaseTool):
         required_skills = internship.get("required_skills", [])
 
         user_set = {s.strip().lower() for s in user_skills if s.strip()}
-        required_list = [s.strip() for s in required_skills if s.strip()]
+        required_list = _unique_case_insensitive([s for s in required_skills if s and s.strip()])
 
         missing_skills = [
             skill for skill in required_list

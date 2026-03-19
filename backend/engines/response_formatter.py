@@ -53,6 +53,7 @@ def format_response(
             "location": rank_data.get("location", ""),
             "openings": rank_data.get("openings", 0),
             "apply_url": rank_data.get("apply_url", ""),
+            "required_skills": rank_data.get("required_skills", []),
             # ── Deterministic scores ─────────────────────────
             "weighted_score": rank_data.get("weighted_score", 0),
             "score_breakdown": rank_data.get("score_breakdown", {}),
@@ -61,7 +62,7 @@ def format_response(
             "confidence_score": analysis.get("confidence_score", 0),
             "reasoning": analysis.get("reasoning", ""),
             "strengths": analysis.get("strengths", []),
-            "missing_skills": analysis.get("missing_skills", []),
+            "missing_skills": rank_data.get("missing_skills", []),
             "skill_gap_analysis": analysis.get("skill_gap_analysis", ""),
             "learning_roadmap": analysis.get("learning_roadmap", []),
             "improvement_priority": analysis.get("improvement_priority", ""),

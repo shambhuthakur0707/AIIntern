@@ -5,6 +5,11 @@ Scraping is triggered on-demand by the user (via the API) and results
 are persisted in MongoDB until their deadline expires.
 
 Internships are de-duplicated by apply_url so re-runs don't create duplicates.
+
+Configured source policy:
+- JSearch (restricted to requested publishers: LinkedIn, Indeed, Jobsora,
+  Internshala, Skill India Digital Hub, Accenture)
+- Targeted source scraper (Jobsora, Internshala, Skill India Digital Hub, Accenture)
 """
 
 import logging
@@ -64,19 +69,32 @@ def run_scraper_job(app, location: str = ""):
         # Import scrapers inside the function so they're always resolved correctly
         try:
             from .jsearch_scraper import fetch_internships as jsearch_fetch
-            from .remotive_scraper import fetch_internships as remotive_fetch
-            from .adzuna_scraper import fetch_internships as adzuna_fetch
+            from .target_sources_scraper import fetch_internships as target_sources_fetch
             from .cleanup import run_cleanup
+            from .internship_filters import (
+                extract_required_skills,
+                is_internship_listing,
+                location_matches_hint,
+                normalize_india_state_location,
+            )
         except ImportError:
             from scrapers.jsearch_scraper import fetch_internships as jsearch_fetch
-            from scrapers.remotive_scraper import fetch_internships as remotive_fetch
-            from scrapers.adzuna_scraper import fetch_internships as adzuna_fetch
+            from scrapers.target_sources_scraper import fetch_internships as target_sources_fetch
             from scrapers.cleanup import run_cleanup
+            from scrapers.internship_filters import (  # type: ignore
+                extract_required_skills,
+                is_internship_listing,
+                location_matches_hint,
+                normalize_india_state_location,
+            )
 
         try:
-            from .config import Config  # type: ignore[import]
+            from ..config import Config  # type: ignore[import]
         except ImportError:
-            from config import Config  # type: ignore[import]
+            try:
+                from backend.config import Config  # type: ignore[import]
+            except ImportError:
+                from config import Config  # type: ignore[import]
 
         db = app.config["DB"]
         total_inserted = 0
@@ -87,47 +105,73 @@ def run_scraper_job(app, location: str = ""):
 
         logger.info("Scraping with location filter: '%s'", location or "(all)")
 
-        # ── 1. Remotive (free, no key required) ───────────────────────────
-        try:
-            jobs = remotive_fetch(location=location)
-            ins, upd = _upsert_internships(db, jobs)
-            total_inserted += ins
-            total_updated += upd
-            logger.info("Remotive done: +%d inserted, %d updated", ins, upd)
-        except Exception as exc:
-            logger.error("Remotive scraper raised: %s", exc)
-            errors.append(f"remotive: {exc}")
+        def sanitize_records(records: list) -> list:
+            """Final safety gate: internship-only + India state location + concrete skills."""
+            kept = []
+            for record in records:
+                title = (record.get("title") or "").strip()
+                description = record.get("description") or ""
+                if not is_internship_listing(title, description):
+                    continue
 
-        # ── 2. JSearch (RapidAPI — covers LinkedIn, Indeed, Glassdoor) ────
+                normalized_location = normalize_india_state_location(record.get("location", ""))
+                if not normalized_location:
+                    continue
+                if not location_matches_hint(normalized_location, location):
+                    continue
+
+                requirement_text = " ".join(record.get("required_skills") or [])
+                skills = extract_required_skills(
+                    title=title,
+                    description=description,
+                    requirement_text=requirement_text,
+                )
+                if not skills:
+                    continue
+
+                clean = dict(record)
+                clean["location"] = normalized_location
+                clean["required_skills"] = skills
+                kept.append(clean)
+            return kept
+
+        # ── 1. JSearch (restricted to requested publishers) ────────────────
         if Config.JSEARCH_API_KEY:
             try:
-                jobs = jsearch_fetch(api_key=Config.JSEARCH_API_KEY, location=location)
+                jobs = jsearch_fetch(
+                    api_key=Config.JSEARCH_API_KEY,
+                    location=location,
+                    allowed_publishers=[
+                        "linkedin",
+                        "indeed",
+                        "jobsora",
+                        "internshala",
+                        "skill-india-digital-hub",
+                        "accenture",
+                    ],
+                )
+                jobs = sanitize_records(jobs)
                 ins, upd = _upsert_internships(db, jobs)
                 total_inserted += ins
                 total_updated += upd
-                logger.info("JSearch done: +%d inserted, %d updated", ins, upd)
+                logger.info("JSearch (requested publishers) done: +%d inserted, %d updated", ins, upd)
             except Exception as exc:
                 logger.error("JSearch scraper raised: %s", exc)
                 errors.append(f"jsearch: {exc}")
         else:
             logger.info("JSearch skipped — JSEARCH_API_KEY not configured.")
 
-        # ── 3. Adzuna (free tier) ─────────────────────────────────────────
-        if Config.ADZUNA_APP_ID and Config.ADZUNA_API_KEY:
-            try:
-                jobs = adzuna_fetch(
-                    app_id=Config.ADZUNA_APP_ID, api_key=Config.ADZUNA_API_KEY,
-                    location=location,
-                )
-                ins, upd = _upsert_internships(db, jobs)
-                total_inserted += ins
-                total_updated += upd
-                logger.info("Adzuna done: +%d inserted, %d updated", ins, upd)
-            except Exception as exc:
-                logger.error("Adzuna scraper raised: %s", exc)
-                errors.append(f"adzuna: {exc}")
-        else:
-            logger.info("Adzuna skipped — ADZUNA_APP_ID / ADZUNA_API_KEY not configured.")
+        # ── 2. Targeted sources: Jobsora, Internshala, Skill India DH, Accenture ──
+        try:
+            jobs = target_sources_fetch(location=location)
+            jobs = sanitize_records(jobs)
+            ins, upd = _upsert_internships(db, jobs)
+            total_inserted += ins
+            total_updated += upd
+            logger.info("Target sources done: +%d inserted, %d updated", ins, upd)
+        except Exception as exc:
+            logger.error("Target source scraper raised: %s", exc)
+            errors.append(f"target_sources: {exc}")
 
         # ── Persist run metadata ──────────────────────────────────────────
         db.scraper_meta.update_one(

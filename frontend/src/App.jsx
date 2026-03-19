@@ -7,6 +7,7 @@ import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import InternshipsPage from './pages/InternshipsPage'
 import ProfilePage from './pages/ProfilePage'
+import StatisticsPage from './pages/StatisticsPage'
 
 function ProtectedRoute({ children }) {
     const { token } = useAuth()
@@ -31,6 +32,7 @@ export default function App() {
                             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
                             <Route path="/internships" element={<ProtectedRoute><InternshipsPage /></ProtectedRoute>} />
                             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+                            <Route path="/statistics" element={<ProtectedRoute><StatisticsPage /></ProtectedRoute>} />
                             <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>
                     </BrowserRouter>

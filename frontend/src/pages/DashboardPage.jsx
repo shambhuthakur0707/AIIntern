@@ -96,6 +96,7 @@ function RecCard({ rec, index }) {
     const [open, setOpen] = useState(false)
     const [copied, setCopied] = useState(false)
     const roadmap = rec.learning_roadmap ?? []
+    const requiredSkills = rec.required_skills ?? []
     const score = Number(rec.confidence_score ?? 0).toFixed(0)
     const scoreBg = score >= 70 ? 'bg-emerald-500/15 border-emerald-500/30' : score >= 45 ? 'bg-indigo-500/15 border-indigo-500/30' : 'bg-amber-500/15 border-amber-500/30'
     const scoreText = score >= 70 ? 'text-emerald-400' : score >= 45 ? 'text-indigo-400' : 'text-amber-400'
@@ -114,10 +115,13 @@ function RecCard({ rec, index }) {
                         <h3 className="font-bold text-white text-base leading-snug">{rec.internship_title ?? rec.title}</h3>
                         <p className="text-sm text-gray-400 mt-0.5">{rec.company ?? rec.internship_company ?? '—'}</p>
                         <div className="flex flex-wrap gap-1.5 mt-2">
-                            {(rec.matched_skills ?? []).slice(0, 4).map(s => (
-                                <span key={s} className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-500/25 text-indigo-300">{s}</span>
+                            {(rec.matched_skills ?? []).slice(0, 3).map(s => (
+                                <span key={s} className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/15 border border-green-500/25 text-green-300 font-medium">✓ {s}</span>
                             ))}
-                            {(rec.matched_skills ?? []).length > 4 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-gray-500">+{rec.matched_skills.length - 4} more</span>}
+                            {(rec.missing_skills ?? []).slice(0, 1).map(s => (
+                                <span key={s} className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/25 text-red-300 font-medium">✕ {s}</span>
+                            ))}
+                            {((rec.matched_skills?.length ?? 0) + (rec.missing_skills?.length ?? 0) > 4) && <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-gray-500">+{(rec.matched_skills?.length ?? 0) + (rec.missing_skills?.length ?? 0) - 4} more</span>}
                         </div>
                     </div>
                 </div>
@@ -133,12 +137,25 @@ function RecCard({ rec, index }) {
                 </div>
             )}
 
+            {(rec.matched_skills ?? []).length > 0 && (
+                <div className="px-5 pb-4">
+                    <p className="text-[10px] text-gray-500 mb-2">✓ Matched Skills:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                        {rec.matched_skills.map(s => (
+                            <span key={s} className="text-[10px] px-2.5 py-1 rounded-full bg-green-500/10 border border-green-500/30 text-green-300 font-medium">{s}</span>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {(rec.missing_skills ?? []).length > 0 && (
-                <div className="px-5 pb-4 flex flex-wrap gap-1.5 items-center">
-                    <span className="text-[10px] text-gray-500">Gaps:</span>
-                    {rec.missing_skills.slice(0, 5).map(s => (
-                        <span key={s} className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-300">{s}</span>
-                    ))}
+                <div className="px-5 pb-4">
+                    <p className="text-[10px] text-gray-500 mb-2">✕ Missing Skills (need to learn):</p>
+                    <div className="flex flex-wrap gap-1.5">
+                        {rec.missing_skills.map(s => (
+                            <span key={s} className="text-[10px] px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/30 text-red-300 font-medium">{s}</span>
+                        ))}
+                    </div>
                 </div>
             )}
 
@@ -246,9 +263,10 @@ export default function DashboardPage() {
         setProfileBusy(true)
         try {
             const { data } = await api.patch('/profile/skills/add', { skill })
-            updateUser(data.data.user); setSkillInput('')
-            setMatchResult(null) // Clear match result so user knows to re-run agent
-            toast({ message: `Added: ${skill} — Run Agent to update recommendations`, type: 'success' })
+            updateUser(data.data.user)
+            if (data.data.user?.last_match_result) setMatchResult(data.data.user.last_match_result)
+            setSkillInput('')
+            toast({ message: `Added: ${skill}`, type: 'success' })
         } catch (err) { toast({ message: err.response?.data?.message || 'Could not add skill.', type: 'error' }) }
         finally { setProfileBusy(false) }
     }
@@ -257,9 +275,9 @@ export default function DashboardPage() {
         setProfileBusy(true)
         try {
             const { data } = await api.patch('/profile/skills/remove', { skill })
-            updateUser(data.data.user); 
-            setMatchResult(null) // Clear match result so user knows to re-run agent
-            toast({ message: `Removed: ${skill} — Run Agent to update recommendations`, type: 'info' })
+            updateUser(data.data.user)
+            if (data.data.user?.last_match_result) setMatchResult(data.data.user.last_match_result)
+            toast({ message: `Removed: ${skill}`, type: 'info' })
         } catch (err) { toast({ message: err.response?.data?.message || 'Could not remove.', type: 'error' }) }
         finally { setProfileBusy(false) }
     }
@@ -272,8 +290,9 @@ export default function DashboardPage() {
             formData.append('github_url', profileLinks.github_url || '')
             if (cvFile) formData.append('cv', cvFile)
             const { data } = await api.post('/profile/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
-            updateUser(data.data.user); setCvFile(null)
-            setMatchResult(null) // Clear match result so user knows to re-run agent
+            updateUser(data.data.user)
+            if (data.data.user?.last_match_result) setMatchResult(data.data.user.last_match_result)
+            setCvFile(null)
             const c = data.data.imported_skills?.length || 0
             toast({ message: `Imported ${c} skill${c !== 1 ? 's' : ''} — Run Agent to update recommendations`, type: 'success' })
         } catch (err) { toast({ message: err.response?.data?.message || 'Import failed.', type: 'error' }) }

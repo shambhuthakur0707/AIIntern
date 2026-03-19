@@ -8,6 +8,7 @@ function navClassName({ isActive }) {
 
 const NAV_LINKS = [
     { to: '/dashboard', label: 'Dashboard' },
+    { to: '/statistics', label: 'Statistics' },
     { to: '/internships', label: 'Internships' },
     { to: '/profile', label: 'Profile' },
 ]

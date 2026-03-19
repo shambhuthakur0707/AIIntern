@@ -55,10 +55,11 @@ def match_internships():
 
         # Save match results to database
         update_user_match_result(str(user["_id"]), match_data)
+        updated_user = get_current_user() or user
 
         return success_response(
             data={
-                "user": sanitize_user(user),
+                "user": sanitize_user(updated_user),
                 "match_result": match_data,
             },
             message="Internship matching completed successfully"

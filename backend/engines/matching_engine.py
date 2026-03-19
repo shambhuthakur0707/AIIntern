@@ -33,12 +33,21 @@ def compute_skill_overlap(
     """
     user_set = {s.strip().lower() for s in user_skills if s.strip()}
     required_list = [s.strip() for s in required_skills if s.strip()]
-    required_lower = {s.lower() for s in required_list}
 
-    matched = [s for s in required_list if s.lower() in user_set]
-    missing = [s for s in required_list if s.lower() not in user_set]
+    # De-duplicate required skills case-insensitively while preserving order.
+    required_unique: List[str] = []
+    seen_required = set()
+    for skill in required_list:
+        key = skill.lower()
+        if key in seen_required:
+            continue
+        seen_required.add(key)
+        required_unique.append(skill)
 
-    total = len(required_lower)
+    matched = [s for s in required_unique if s.lower() in user_set]
+    missing = [s for s in required_unique if s.lower() not in user_set]
+
+    total = len(required_unique)
     overlap_pct = round((len(matched) / total) * 100, 2) if total > 0 else 0.0
 
     return {
@@ -78,7 +87,9 @@ def fetch_and_filter(user_profile: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         overlap = compute_skill_overlap(user_skills, required)
 
-        if overlap["overlap_pct"] < MIN_OVERLAP_PCT:
+        # Keep listings that have no structured skill tags; external scrapers
+        # often return empty required_skills even for valid internships.
+        if required and overlap["overlap_pct"] < MIN_OVERLAP_PCT:
             continue
 
         # Attach overlap metadata to the doc

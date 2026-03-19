@@ -11,16 +11,27 @@ import requests
 from datetime import datetime
 
 try:
-    from ..tools.skill_extraction import extract_skills_from_title_and_description
+    from .internship_filters import (
+        extract_required_skills,
+        is_internship_listing,
+        location_matches_hint,
+        normalize_india_state_location,
+        normalize_text,
+    )
 except ImportError:
-    from tools.skill_extraction import extract_skills_from_title_and_description
+    from scrapers.internship_filters import (  # type: ignore
+        extract_required_skills,
+        is_internship_listing,
+        location_matches_hint,
+        normalize_india_state_location,
+        normalize_text,
+    )
 
 logger = logging.getLogger(__name__)
 
 ADZUNA_BASE = "https://api.adzuna.com/v1/api/jobs"
 
-# Country codes supported by Adzuna
-COUNTRIES = ["us", "gb", "in", "au", "ca", "de", "fr"]
+INDIA_COUNTRY_CODE = "in"
 
 SEARCH_TERMS = [
     "software internship",
@@ -34,19 +45,6 @@ SEARCH_TERMS = [
     "backend internship",
     "devops internship",
 ]
-
-# Words that confirm the listing is an internship
-_INTERN_MARKERS = {
-    "intern", "internship", "trainee", "apprentice",
-    "co-op", "coop", "working student", "placement",
-}
-
-
-def _is_internship(title: str, description: str) -> bool:
-    """Return True only if the listing looks like an actual internship."""
-    combined = (title + " " + description).lower()
-    return any(marker in combined for marker in _INTERN_MARKERS)
-
 
 DOMAIN_KEYWORDS = {
     "machine learning": "Machine Learning",
@@ -69,7 +67,6 @@ DOMAIN_KEYWORDS = {
     "ui/ux": "UI/UX Design",
 }
 
-
 def _infer_domain(title: str, description: str) -> str:
     combined = (title + " " + description).lower()
     for keyword, domain in DOMAIN_KEYWORDS.items():
@@ -81,21 +78,32 @@ def _infer_domain(title: str, description: str) -> str:
 def _build_location(job: dict, country: str) -> str:
     loc = job.get("location", {})
     display = loc.get("display_name", "")
-    if display:
-        return display
-    areas = loc.get("area", [])
-    if areas:
-        return ", ".join(str(a) for a in areas)
-    return country.upper()
+    area = loc.get("area", [])
+    area_text = ", ".join(str(a) for a in area if a)
+    normalized = normalize_india_state_location(
+        display or area_text,
+        state=area_text,
+        country=country,
+    )
+    if normalized:
+        return normalized
+
+    # Try fallback using latitude/longitude area strings when display is noisy.
+    if area_text:
+        return normalize_india_state_location(area_text, country=country)
+
+    return ""
 
 
 def _build_stipend(job: dict) -> str:
     min_sal = job.get("salary_min")
     max_sal = job.get("salary_max")
+    currency = (job.get("salary_currency") or "INR").upper()
+    symbol = "INR" if currency == "INR" else currency
     if min_sal and max_sal:
-        return f"${int(min_sal):,}–${int(max_sal):,}/year"
+        return f"{symbol} {int(min_sal):,}-{int(max_sal):,}/year"
     if min_sal:
-        return f"${int(min_sal):,}/year"
+        return f"{symbol} {int(min_sal):,}/year"
     return "Not disclosed"
 
 
@@ -103,44 +111,32 @@ def _map_job(job: dict, country: str) -> dict:
     title = job.get("title", "Internship")
     company = (job.get("company") or {}).get("display_name", "Unknown Company")
     description = job.get("description", "")
+    normalized_location = _build_location(job, country)
+    if not normalized_location:
+        return {}
+
+    skills = extract_required_skills(
+        title=title,
+        description=description,
+        requirement_text=description,
+    )
+    if not skills:
+        return {}
+
     return {
         "title": title,
         "company": company,
-        "required_skills": extract_skills_from_title_and_description(title, description),
+        "required_skills": skills,
         "description": description[:1200] if description else "",
         "domain": _infer_domain(title, description),
         "stipend": _build_stipend(job),
         "duration": "3–6 months",
-        "location": _build_location(job, country),
+        "location": normalized_location,
         "openings": 1,
         "apply_url": job.get("redirect_url", ""),
         "source": "adzuna",
         "scraped_at": datetime.utcnow(),
     }
-
-
-# Map common location names to Adzuna country codes
-_LOCATION_TO_COUNTRY = {
-    "us": "us", "usa": "us", "united states": "us", "america": "us",
-    "uk": "gb", "gb": "gb", "united kingdom": "gb", "england": "gb", "britain": "gb",
-    "in": "in", "india": "in",
-    "au": "au", "australia": "au",
-    "ca": "ca", "canada": "ca",
-    "de": "de", "germany": "de",
-    "fr": "fr", "france": "fr",
-}
-
-
-def _resolve_countries(location: str) -> list:
-    """Resolve a location string to a list of Adzuna country codes."""
-    if not location:
-        return COUNTRIES
-    loc_lower = location.strip().lower()
-    for key, code in _LOCATION_TO_COUNTRY.items():
-        if key in loc_lower:
-            return [code]
-    # If no country match, search all countries with location in the query
-    return COUNTRIES
 
 
 def fetch_internships(app_id: str, api_key: str, location: str = "") -> list:
@@ -159,45 +155,51 @@ def fetch_internships(app_id: str, api_key: str, location: str = "") -> list:
         logger.warning("Adzuna: ADZUNA_APP_ID or ADZUNA_API_KEY not set — skipping.")
         return []
 
-    countries = _resolve_countries(location)
-    # Include location in search terms if provided and not already a country-level filter
-    location_suffix = f" {location}" if location and len(countries) == len(COUNTRIES) else ""
+    location_hint = normalize_text(location)
+    if location_hint and "india" not in location_hint.lower():
+        location_clause = f"{location_hint}, India"
+    elif location_hint:
+        location_clause = location_hint
+    else:
+        location_clause = "India"
 
     results = []
-    for country in countries:
-        for term in SEARCH_TERMS:
-            url = f"{ADZUNA_BASE}/{country}/search/1"
-            params = {
-                "app_id": app_id,
-                "app_key": api_key,
-                "results_per_page": 20,
-                "what": term + location_suffix,
-                "content-type": "application/json",
-            }
-            try:
-                resp = requests.get(url, params=params, timeout=20)
-                if resp.status_code == 429:
-                    logger.warning(
-                        "Adzuna: rate limit reached for country '%s' — stopping.", country
-                    )
-                    break
-                resp.raise_for_status()
-                jobs = resp.json().get("results", [])
-                added = 0
-                for job in jobs:
-                    title = job.get("title", "")
-                    desc = job.get("description", "")
-                    if not _is_internship(title, desc):
-                        continue
-                    results.append(_map_job(job, country))
-                    added += 1
-                logger.info(
-                    "Adzuna: %d internships kept (of %d) for '%s' in '%s'",
-                    added, len(jobs), term, country,
-                )
-            except requests.RequestException as exc:
-                logger.error(
-                    "Adzuna: request failed for '%s'/'%s': %s", country, term, exc
-                )
+    for term in SEARCH_TERMS:
+        url = f"{ADZUNA_BASE}/{INDIA_COUNTRY_CODE}/search/1"
+        params = {
+            "app_id": app_id,
+            "app_key": api_key,
+            "results_per_page": 20,
+            "what": f"{term} {location_clause}".strip(),
+            "content-type": "application/json",
+        }
+        try:
+            resp = requests.get(url, params=params, timeout=20)
+            if resp.status_code == 429:
+                logger.warning("Adzuna: rate limit reached for India endpoint.")
+                break
+            resp.raise_for_status()
+            jobs = resp.json().get("results", [])
+            added = 0
+            for job in jobs:
+                title = job.get("title", "")
+                desc = job.get("description", "")
+                if not is_internship_listing(title, desc):
+                    continue
+                mapped = _map_job(job, "India")
+                if not mapped:
+                    continue
+                if not location_matches_hint(mapped["location"], location_hint):
+                    continue
+                results.append(mapped)
+                added += 1
+            logger.info(
+                "Adzuna: %d internships kept (of %d) for '%s' in India",
+                added,
+                len(jobs),
+                term,
+            )
+        except requests.RequestException as exc:
+            logger.error("Adzuna: request failed for '%s': %s", term, exc)
 
     return results

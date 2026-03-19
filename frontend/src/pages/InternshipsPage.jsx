@@ -211,15 +211,15 @@ export default function InternshipsPage() {
                 {/* Search for new internships */}
                 <section className="glass-card p-6">
                     <p className="section-label mb-2">Search New Internships</p>
-                    <h2 className="text-xl font-bold text-white mb-1">Find internships in a specific location</h2>
+                    <h2 className="text-xl font-bold text-white mb-1">Find internships in India (state-wise)</h2>
                     <p className="text-sm text-gray-400 mb-4">
-                        Enter a city, state, or country to search for new internships. This fetches fresh listings from external sources.
+                        Sources: LinkedIn, Indeed, Jobsora, Internshala, Skill India Digital Hub, and Accenture careers. Enter an India city/state (for example: Bengaluru, Karnataka, Maharashtra, Delhi). Global listings are ignored.
                     </p>
                     <div className="flex flex-col sm:flex-row gap-3">
                         <input
                             type="text"
                             className="form-input flex-1"
-                            placeholder="e.g. New York, India, London, Remote…"
+                            placeholder="e.g. Bengaluru, Karnataka, Maharashtra, Delhi"
                             value={searchLocation}
                             onChange={(e) => setSearchLocation(e.target.value)}
                             maxLength={100}
