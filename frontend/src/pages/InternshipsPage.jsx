@@ -213,7 +213,7 @@ export default function InternshipsPage() {
                     <p className="section-label mb-2">Search New Internships</p>
                     <h2 className="text-xl font-bold text-white mb-1">Find internships in India (state-wise)</h2>
                     <p className="text-sm text-gray-400 mb-4">
-                        Sources: LinkedIn, Indeed, Jobsora, Internshala, Skill India Digital Hub, and Accenture careers. Enter an India city/state (for example: Bengaluru, Karnataka, Maharashtra, Delhi). Global listings are ignored.
+                        Sources: Adzuna and Apify (LinkedIn + ATS actors). Enter an India city/state (for example: Bengaluru, Karnataka, Maharashtra, Delhi). Global listings are ignored.
                     </p>
                     <div className="flex flex-col sm:flex-row gap-3">
                         <input

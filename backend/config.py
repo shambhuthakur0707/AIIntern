@@ -18,6 +18,10 @@ class Config:
     JSEARCH_API_KEY = os.getenv("JSEARCH_API_KEY", "")
     ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID", "")
     ADZUNA_API_KEY = os.getenv("ADZUNA_API_KEY", "")
+    APIFY_TOKEN = os.getenv("APIFY_TOKEN", "")
+    APIFY_LINKEDIN_ACTOR_ID = os.getenv("APIFY_LINKEDIN_ACTOR_ID", "")
+    APIFY_ATS_ACTOR_ID = os.getenv("APIFY_ATS_ACTOR_ID", "")
+    APIFY_MAX_ITEMS = int(os.getenv("APIFY_MAX_ITEMS", 100))
     SCRAPER_INTERVAL_HOURS = int(os.getenv("SCRAPER_INTERVAL_HOURS", 6))
 
     # ── Google OAuth ──────────────────────────────────────────────────────

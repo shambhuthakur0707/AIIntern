@@ -7,9 +7,8 @@ are persisted in MongoDB until their deadline expires.
 Internships are de-duplicated by apply_url so re-runs don't create duplicates.
 
 Configured source policy:
-- JSearch (restricted to requested publishers: LinkedIn, Indeed, Jobsora,
-  Internshala, Skill India Digital Hub, Accenture)
-- Targeted source scraper (Jobsora, Internshala, Skill India Digital Hub, Accenture)
+- Adzuna (India internships)
+- Apify (LinkedIn jobs + ATS jobs actors)
 """
 
 import logging
@@ -68,8 +67,8 @@ def run_scraper_job(app, location: str = ""):
     with app.app_context():
         # Import scrapers inside the function so they're always resolved correctly
         try:
-            from .jsearch_scraper import fetch_internships as jsearch_fetch
-            from .target_sources_scraper import fetch_internships as target_sources_fetch
+            from .adzuna_scraper import fetch_internships as adzuna_fetch
+            from .apify_scraper import fetch_internships as apify_fetch
             from .cleanup import run_cleanup
             from .internship_filters import (
                 extract_required_skills,
@@ -78,8 +77,8 @@ def run_scraper_job(app, location: str = ""):
                 normalize_india_state_location,
             )
         except ImportError:
-            from scrapers.jsearch_scraper import fetch_internships as jsearch_fetch
-            from scrapers.target_sources_scraper import fetch_internships as target_sources_fetch
+            from scrapers.adzuna_scraper import fetch_internships as adzuna_fetch
+            from scrapers.apify_scraper import fetch_internships as apify_fetch
             from scrapers.cleanup import run_cleanup
             from scrapers.internship_filters import (  # type: ignore
                 extract_required_skills,
@@ -135,43 +134,42 @@ def run_scraper_job(app, location: str = ""):
                 kept.append(clean)
             return kept
 
-        # ── 1. JSearch (restricted to requested publishers) ────────────────
-        if Config.JSEARCH_API_KEY:
+        # ── 1. Adzuna (India internships) ─────────────────────────────────
+        if Config.ADZUNA_APP_ID and Config.ADZUNA_API_KEY:
             try:
-                jobs = jsearch_fetch(
-                    api_key=Config.JSEARCH_API_KEY,
+                jobs = adzuna_fetch(
+                    app_id=Config.ADZUNA_APP_ID,
+                    api_key=Config.ADZUNA_API_KEY,
                     location=location,
-                    allowed_publishers=[
-                        "linkedin",
-                        "indeed",
-                        "jobsora",
-                        "internshala",
-                        "skill-india-digital-hub",
-                        "accenture",
-                    ],
                 )
                 jobs = sanitize_records(jobs)
                 ins, upd = _upsert_internships(db, jobs)
                 total_inserted += ins
                 total_updated += upd
-                logger.info("JSearch (requested publishers) done: +%d inserted, %d updated", ins, upd)
+                logger.info("Adzuna done: +%d inserted, %d updated", ins, upd)
             except Exception as exc:
-                logger.error("JSearch scraper raised: %s", exc)
-                errors.append(f"jsearch: {exc}")
+                logger.error("Adzuna scraper raised: %s", exc)
+                errors.append(f"adzuna: {exc}")
         else:
-            logger.info("JSearch skipped — JSEARCH_API_KEY not configured.")
+            logger.info("Adzuna skipped — ADZUNA_APP_ID / ADZUNA_API_KEY not configured.")
 
-        # ── 2. Targeted sources: Jobsora, Internshala, Skill India DH, Accenture ──
+        # ── 2. Apify (LinkedIn + ATS actors) ─────────────────────────────
         try:
-            jobs = target_sources_fetch(location=location)
+            jobs = apify_fetch(
+                apify_token=Config.APIFY_TOKEN,
+                linkedin_actor_id=Config.APIFY_LINKEDIN_ACTOR_ID,
+                ats_actor_id=Config.APIFY_ATS_ACTOR_ID,
+                location=location,
+                max_items=Config.APIFY_MAX_ITEMS,
+            )
             jobs = sanitize_records(jobs)
             ins, upd = _upsert_internships(db, jobs)
             total_inserted += ins
             total_updated += upd
-            logger.info("Target sources done: +%d inserted, %d updated", ins, upd)
+            logger.info("Apify done: +%d inserted, %d updated", ins, upd)
         except Exception as exc:
-            logger.error("Target source scraper raised: %s", exc)
-            errors.append(f"target_sources: {exc}")
+            logger.error("Apify scraper raised: %s", exc)
+            errors.append(f"apify: {exc}")
 
         # ── Persist run metadata ──────────────────────────────────────────
         db.scraper_meta.update_one(
