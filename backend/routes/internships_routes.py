@@ -154,6 +154,7 @@ def list_internships():
             "experience_level": user.get("experience_level"),
             "skills": user.get("skills", []),
             "interests": user.get("interests", []),
+            "location": user.get("location", ""),
         }
 
         domain = _normalize(request.args.get("domain", ""))
@@ -251,6 +252,8 @@ def list_internships():
                 "duration": _normalize(doc.get("duration", "")),
                 "stipend": _normalize(doc.get("stipend", "")),
                 "openings": doc.get("openings", 0),
+                "is_remote": bool(doc.get("is_remote", False)),
+                "work_mode": _normalize(doc.get("work_mode", "")) or ("Remote" if bool(doc.get("is_remote", False)) else "On-site/Hybrid"),
                 "required_skills": doc.get("required_skills", []),
                 "description": _normalize(doc.get("description", "")),
                 "apply_url": _build_apply_url(doc),

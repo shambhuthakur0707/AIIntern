@@ -39,6 +39,7 @@ def match_internships():
             "experience_level": user.get("experience_level"),
             "skills": user.get("skills", []),
             "interests": user.get("interests", []),
+            "location": user.get("location", ""),
         }
 
         # Run AI matching agent

@@ -12,12 +12,12 @@ try:
     from ..utils.response_utils import success_response, error_response
     from ..scrapers.scheduler import run_scraper_job
     from ..scrapers.cleanup import run_cleanup
-    from ..scrapers.internship_filters import normalize_india_state_location
+    from ..scrapers.internship_filters import is_supported_location_hint
 except ImportError:
     from utils.response_utils import success_response, error_response
     from scrapers.scheduler import run_scraper_job
     from scrapers.cleanup import run_cleanup
-    from scrapers.internship_filters import normalize_india_state_location
+    from scrapers.internship_filters import is_supported_location_hint
 
 scraper_bp = Blueprint("scraper", __name__)
 
@@ -25,7 +25,7 @@ scraper_bp = Blueprint("scraper", __name__)
 @scraper_bp.route("/trigger", methods=["POST"])
 @jwt_required()
 def trigger_scraper():
-    """Manually trigger India internship scraping for a specific India city/state."""
+    """Manually trigger internship scraping (all countries, remote optional)."""
     try:
         body = request.get_json(silent=True) or {}
         location = (body.get("location") or "").strip()
@@ -33,16 +33,14 @@ def trigger_scraper():
             return error_response("Location must be under 100 characters", 400)
 
         location_lower = location.lower()
-        if location and location_lower not in {"india", "in"}:
-            normalized_hint = normalize_india_state_location(location)
-            if not normalized_hint:
-                return error_response(
-                    "Please enter a valid India city or state (for example: Bengaluru, Karnataka, Maharashtra).",
-                    400,
-                )
+        if location and not is_supported_location_hint(location):
+            return error_response(
+                "Please enter a concrete city/state/country (you may also include 'remote').",
+                400,
+            )
 
         app = current_app._get_current_object()  # noqa: SLF001
-        run_location = "" if location_lower in {"india", "in"} else location
+        run_location = location
         run_scraper_job(app, location=run_location)
 
         db = current_app.config["DB"]
@@ -53,7 +51,8 @@ def trigger_scraper():
                 "total_inserted": meta.get("total_inserted", 0),
                 "total_updated": meta.get("total_updated", 0),
                 "errors": meta.get("errors", []),
-                "location": run_location or "India (all states)",
+                "location": run_location or "All countries",
+                "location_mode": "global" if not run_location else "targeted",
             },
             message="Scraper completed successfully.",
         )

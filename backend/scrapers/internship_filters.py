@@ -3,8 +3,9 @@ Shared internship scraping filters and normalization utilities.
 
 Enforces:
 1. Internship-only records
-2. India-only, state-level locations (no worldwide/global placeholders)
+2. Location normalization with worldwide/global noise filtering
 3. Required skill extraction from title + requirements + description text
+4. Remote vs non-remote tagging
 """
 
 from __future__ import annotations
@@ -25,8 +26,27 @@ GLOBAL_LOCATION_PATTERNS = (
     re.compile(r"\banywhere\b", re.IGNORECASE),
     re.compile(r"\bglobal\b", re.IGNORECASE),
     re.compile(r"\binternational\b", re.IGNORECASE),
-    re.compile(r"\bremote\b", re.IGNORECASE),
 )
+
+REMOTE_PATTERNS = (
+    re.compile(r"\bremote\b", re.IGNORECASE),
+    re.compile(r"\bwfh\b", re.IGNORECASE),
+    re.compile(r"\bwork\s+from\s+home\b", re.IGNORECASE),
+    re.compile(r"\bdistributed\b", re.IGNORECASE),
+)
+
+COUNTRY_ALIASES: Dict[str, Tuple[str, ...]] = {
+    "India": ("india", "in"),
+    "Nepal": ("nepal", "np"),
+    "USA": (
+        "usa",
+        "us",
+        "u.s.",
+        "u.s.a.",
+        "united states",
+        "united states of america",
+    ),
+}
 
 INDIA_STATE_ALIASES: Dict[str, Tuple[str, ...]] = {
     "Andhra Pradesh": ("andhra pradesh",),
@@ -109,6 +129,20 @@ CITY_TO_STATE: Dict[str, str] = {
     "ranchi": "Jharkhand",
     "visakhapatnam": "Andhra Pradesh",
     "vijayawada": "Andhra Pradesh",
+}
+
+CITY_TO_COUNTRY: Dict[str, str] = {
+    "kathmandu": "Nepal",
+    "lalitpur": "Nepal",
+    "pokhara": "Nepal",
+    "biratnagar": "Nepal",
+    "new york": "USA",
+    "san francisco": "USA",
+    "seattle": "USA",
+    "austin": "USA",
+    "boston": "USA",
+    "chicago": "USA",
+    "los angeles": "USA",
 }
 
 SKILL_PATTERNS: Dict[str, Tuple[re.Pattern[str], ...]] = {
@@ -247,6 +281,45 @@ def _city_state_from_text(text: str) -> Optional[str]:
     return None
 
 
+def _canonical_country_from_text(text: str) -> Optional[str]:
+    text_lower = normalize_text(text).lower()
+    if not text_lower:
+        return None
+    for canonical, aliases in COUNTRY_ALIASES.items():
+        for alias in aliases:
+            if re.search(rf"\b{re.escape(alias)}\b", text_lower):
+                return canonical
+
+    # Generic fallback: use the last comma-separated token as country candidate
+    # when it appears to be alphabetic and not a global placeholder.
+    parts = [p.strip() for p in text_lower.split(",") if p.strip()]
+    if parts:
+        tail = parts[-1]
+        if re.fullmatch(r"[a-z][a-z\s.&-]{1,40}", tail):
+            if tail not in {
+                "remote",
+                "worldwide",
+                "global",
+                "anywhere",
+                "international",
+            }:
+                return tail.title()
+    return None
+
+
+def is_remote_listing(*values: str) -> bool:
+    """Return True when text strongly signals a remote role."""
+    haystack = normalize_text(" ".join(v for v in values if v))
+    if not haystack:
+        return False
+    return any(pattern.search(haystack) for pattern in REMOTE_PATTERNS)
+
+
+def infer_work_mode(*values: str) -> str:
+    """Return a compact mode label used by API/UI."""
+    return "Remote" if is_remote_listing(*values) else "On-site/Hybrid"
+
+
 def normalize_india_state_location(
     raw_location: str = "",
     *,
@@ -297,23 +370,109 @@ def normalize_india_state_location(
     return f"{canonical_state}, India"
 
 
+def normalize_supported_location(
+    raw_location: str = "",
+    *,
+    city: str = "",
+    state: str = "",
+    country: str = "",
+    description: str = "",
+) -> Optional[str]:
+    """
+    Return normalized location for any country with optional locality and remote tag.
+
+    Examples:
+    - "Bengaluru, Karnataka, India"
+    - "Kathmandu, Nepal"
+    - "Berlin, Germany"
+    - "Remote - Austin, USA"
+
+    Returns None for worldwide/global placeholders with no concrete location.
+    """
+    joined = normalize_text(
+        ", ".join(part for part in [raw_location, city, state, country] if part)
+    )
+    if not joined:
+        return None
+
+    joined_lower = joined.lower()
+    if any(pattern.search(joined_lower) for pattern in GLOBAL_LOCATION_PATTERNS):
+        if not _canonical_country_from_text(joined):
+            return None
+
+    # Prefer India's detailed normalizer when country/state hints indicate India.
+    india_first = normalize_india_state_location(raw_location, city=city, state=state, country=country)
+    if india_first:
+        base_location = india_first
+    else:
+        canonical_country = (
+            _canonical_country_from_text(country)
+            or _canonical_country_from_text(joined)
+            or CITY_TO_COUNTRY.get(normalize_text(city).lower())
+            or CITY_TO_COUNTRY.get(normalize_text(raw_location).split(",", 1)[0].strip().lower())
+        )
+        if not canonical_country:
+            return None
+
+        locality = normalize_text(city) or normalize_text(state)
+        if not locality and raw_location:
+            candidate = normalize_text(raw_location.split(",", 1)[0])
+            candidate_lower = candidate.lower()
+            if candidate and candidate_lower not in {
+                "remote",
+                "india",
+                "nepal",
+                "usa",
+                "us",
+                "united states",
+                "united states of america",
+            }:
+                locality = candidate
+
+        if locality:
+            base_location = f"{locality}, {canonical_country}"
+        else:
+            base_location = canonical_country
+
+    if is_remote_listing(raw_location, description, state, city):
+        return f"Remote - {base_location}"
+    return base_location
+
+
 def location_matches_hint(normalized_location: str, location_hint: str) -> bool:
-    """Return True if a normalized India location matches optional user hint."""
+    """Return True if normalized location matches optional country/city/remote hint."""
     hint = normalize_text(location_hint).lower()
     if not hint:
         return True
-    if hint in {"india", "in"}:
-        return True
+    normalized_lower = normalized_location.lower()
+
+    if hint in {"remote", "wfh", "work from home"}:
+        return "remote" in normalized_lower
+
+    hint_country = _canonical_country_from_text(hint)
+    if hint_country:
+        return hint_country.lower() in normalized_lower
 
     hint_state = _canonical_state_from_text(hint)
     if hint_state:
-        return hint_state.lower() in normalized_location.lower()
+        return hint_state.lower() in normalized_lower
 
     hint_city_state = _city_state_from_text(hint)
     if hint_city_state:
-        return hint_city_state.lower() in normalized_location.lower()
+        return hint_city_state.lower() in normalized_lower
 
-    return hint in normalized_location.lower()
+    return hint in normalized_lower
+
+
+def is_supported_location_hint(location_hint: str) -> bool:
+    """Validate that a location hint is concrete enough for searching."""
+    hint = normalize_text(location_hint)
+    if not hint:
+        return True
+    hint_lower = hint.lower()
+    if hint_lower in {"worldwide", "global", "anywhere", "international"}:
+        return False
+    return True
 
 
 def _requirement_focus_text(text: str) -> str:

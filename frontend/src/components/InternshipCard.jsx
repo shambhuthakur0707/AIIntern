@@ -27,6 +27,7 @@ export default function InternshipCard({ rec, index }) {
         rec.recommendation_summary ??
         rec.improvement_priority ??
         'Review the skill gap analysis and roadmap to improve your fit.'
+    const workMode = rec.work_mode ?? (rec.is_remote ? 'Remote' : 'On-site/Hybrid')
 
     const rankColors = ['from-yellow-400 to-amber-500', 'from-gray-300 to-gray-400', 'from-amber-600 to-yellow-700']
     const rankColor = rankColors[index] ?? 'from-brand-500 to-violet-500'
@@ -51,6 +52,7 @@ export default function InternshipCard({ rec, index }) {
                     <span>{rec.stipend}</span>
                     <span>{rec.duration}</span>
                     <span>{rec.location}</span>
+                    <span className={workMode === 'Remote' ? 'text-emerald-400' : 'text-gray-400'}>{workMode}</span>
                 </div>
             </div>
 

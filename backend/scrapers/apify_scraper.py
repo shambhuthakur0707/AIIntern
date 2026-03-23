@@ -17,17 +17,19 @@ import requests
 try:
     from .internship_filters import (
         extract_required_skills,
+        infer_work_mode,
         is_internship_listing,
         location_matches_hint,
-        normalize_india_state_location,
+        normalize_supported_location,
         normalize_text,
     )
 except ImportError:
     from scrapers.internship_filters import (  # type: ignore
         extract_required_skills,
+        infer_work_mode,
         is_internship_listing,
         location_matches_hint,
-        normalize_india_state_location,
+        normalize_supported_location,
         normalize_text,
     )
 
@@ -98,7 +100,7 @@ def _map_row(row: dict[str, Any], source: str, location_hint: str) -> dict:
         country = _first_non_empty(row, ["country", "job_country"])
         location = ", ".join(part for part in [city, state, country] if part)
 
-    normalized_location = normalize_india_state_location(location)
+    normalized_location = normalize_supported_location(location, description=_first_non_empty(row, ["description", "job_description", "summary"]))
     if not normalized_location:
         return {}
     if not location_matches_hint(normalized_location, location_hint):
@@ -128,6 +130,8 @@ def _map_row(row: dict[str, Any], source: str, location_hint: str) -> dict:
         "stipend": "Not disclosed",
         "duration": "3–6 months",
         "location": normalized_location,
+        "is_remote": normalized_location.lower().startswith("remote"),
+        "work_mode": infer_work_mode(normalized_location, description),
         "openings": 1,
         "apply_url": url,
         "posted_at": _to_iso(posted_raw),
@@ -158,27 +162,25 @@ def _run_actor(token: str, actor_id: str, actor_input: dict[str, Any], max_items
         return []
 
 
-def fetch_linkedin_jobs(token: str, actor_id: str, location: str = "India", max_items: int = 100) -> list:
+def fetch_linkedin_jobs(token: str, actor_id: str, location: str = "", max_items: int = 100) -> list:
+    hint = normalize_text(location)
     actor_input = {
         "keywords": "internship OR intern",
-        "location": location or "India",
-        "country": "IN",
+        "location": hint,
         "maxItems": max_items,
     }
     rows = _run_actor(token, actor_id, actor_input, max_items)
-    hint = normalize_text(location)
     return [mapped for row in rows if (mapped := _map_row(row, "apify-linkedin", hint))]
 
 
-def fetch_ats_jobs(token: str, actor_id: str, location: str = "India", max_items: int = 100) -> list:
+def fetch_ats_jobs(token: str, actor_id: str, location: str = "", max_items: int = 100) -> list:
+    hint = normalize_text(location)
     actor_input = {
         "query": "internship OR intern",
-        "location": location or "India",
-        "country": "IN",
+        "location": hint,
         "maxItems": max_items,
     }
     rows = _run_actor(token, actor_id, actor_input, max_items)
-    hint = normalize_text(location)
     return [mapped for row in rows if (mapped := _map_row(row, "apify-ats", hint))]
 
 
@@ -190,6 +192,6 @@ def fetch_internships(
     max_items: int = 100,
 ) -> list:
     all_rows = []
-    all_rows.extend(fetch_linkedin_jobs(apify_token, linkedin_actor_id, location=location or "India", max_items=max_items))
-    all_rows.extend(fetch_ats_jobs(apify_token, ats_actor_id, location=location or "India", max_items=max_items))
+    all_rows.extend(fetch_linkedin_jobs(apify_token, linkedin_actor_id, location=location, max_items=max_items))
+    all_rows.extend(fetch_ats_jobs(apify_token, ats_actor_id, location=location, max_items=max_items))
     return all_rows

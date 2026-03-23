@@ -8,15 +8,16 @@ AIIntern is a full-stack, AI-powered internship recommendation platform that aut
 
 ### 1. Automated Internship Scraping
 
-A background scheduler fetches live internship listings every 6 hours (configurable) from multiple external platforms and stores them in MongoDB, de-duplicated by `apply_url`.
+A background scheduler fetches live internship listings every 6 hours (configurable) from external platforms and stores them in MongoDB, de-duplicated by `apply_url`.
 
 | Data source | What it covers | API key required? |
 |---|---|---|
-| **JSearch** (RapidAPI) | LinkedIn, Indeed, Glassdoor, ZipRecruiter | Yes — free tier 200 req/month |
-| **Remotive** | Remote tech internships (6 categories) | No — completely free |
-| **Adzuna** | Global job boards across 7 countries (US, GB, IN, AU, CA, DE, FR) | Yes — free tier 250 req/month |
+| **Adzuna** | Internship listings across supported Adzuna country endpoints | Yes — free tier 250 req/month |
+| **Apify Actors** | LinkedIn + ATS-based internship feeds (actor-dependent) | Yes — Apify token + actor IDs |
 
-- **Internship-only filtering** — API-level params (`employment_types=INTERN`, search terms contain "internship") **plus** a code-level guard that checks every listing for intern/trainee/apprentice/co-op markers.
+- **Internship-only filtering** — search terms contain "internship" **plus** a code-level guard that checks every listing for intern/trainee/apprentice/co-op markers.
+- **Location gating** — keeps listings with concrete location metadata across countries (filters out pure worldwide/global placeholders).
+- **Remote tagging** — each listing includes explicit `is_remote` and `work_mode` fields.
 - Skill extraction from descriptions (50+ recognised tech skills).
 - Domain inference (ML, Web Dev, DevOps, Cloud, Cybersecurity, etc.).
 - Manual trigger via `POST /api/scraper/trigger` and status check via `GET /api/scraper/status`.
@@ -135,7 +136,7 @@ Uses regex-based NLP matching against a dynamic skill catalogue (base skills + a
 | **Database** | MongoDB (PyMongo) |
 | **LLM runtime** | Ollama (local) / Groq (cloud) |
 | **ML / NLP** | scikit-learn (TF-IDF, cosine similarity) |
-| **Job scraping** | Requests, APScheduler |
+| **Job scraping** | Requests, APScheduler, Apify Actors |
 | **Auth / Security** | bcrypt, JWT |
 | **LangChain tools** | BaseTool wrappers (db_tool, skill_match_tool, skill_gap_tool) |
 
@@ -170,9 +171,9 @@ AIIntern/
 │   │   └── scraper_routes.py       # Trigger scraper / check status
 │   ├── scrapers/
 │   │   ├── scheduler.py            # APScheduler background job
-│   │   ├── jsearch_scraper.py      # JSearch API (LinkedIn, Indeed, etc.)
-│   │   ├── remotive_scraper.py     # Remotive API (free, remote jobs)
-│   │   └── adzuna_scraper.py       # Adzuna API (7 countries)
+│   │   ├── adzuna_scraper.py       # Adzuna API (multi-country endpoints)
+│   │   ├── apify_scraper.py        # Apify actors (LinkedIn + ATS)
+│   │   └── internship_filters.py   # Internship/location/remote/skill filters
 │   ├── services/
 │   │   ├── user_service.py         # User CRUD operations
 │   │   ├── profile_import_service.py  # NLP skill extraction
@@ -251,7 +252,9 @@ AIIntern/
 | `location` | string | e.g. "Bangalore, India" or "Remote" |
 | `openings` | int | Number of positions |
 | `apply_url` | string | Direct application link |
-| `source` | string | "seed", "jsearch", "remotive", or "adzuna" |
+| `source` | string | "seed", "adzuna", "linkedin", "ats", or "apify" |
+| `is_remote` | bool | Whether the role is remote |
+| `work_mode` | string | "Remote" or "On-site/Hybrid" |
 | `scraped_at` | datetime | When the scraper fetched this listing |
 | `created_at` | datetime | First insertion time |
 
@@ -355,15 +358,18 @@ Choose **one** of the following and add the relevant variables to `.env`.
 
 ### Internship Scraper Setup (optional but recommended)
 
-The Remotive scraper works instantly with **no API key**. To also pull from LinkedIn / Indeed / Glassdoor / Adzuna, add:
+To pull internships from Adzuna + Apify actor sources, add:
 
 ```env
-# JSearch (RapidAPI) — sign up free at https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch
-JSEARCH_API_KEY=your-rapidapi-key
-
 # Adzuna — sign up free at https://developer.adzuna.com/
 ADZUNA_APP_ID=your-app-id
 ADZUNA_API_KEY=your-api-key
+
+# Apify — https://console.apify.com/
+APIFY_TOKEN=your-apify-token
+APIFY_LINKEDIN_ACTOR_ID=your-linkedin-actor-id
+APIFY_ATS_ACTOR_ID=your-ats-actor-id
+APIFY_MAX_ITEMS=25
 
 # Scrape interval (default: every 6 hours)
 SCRAPER_INTERVAL_HOURS=6
@@ -420,3 +426,5 @@ The Google sign-in button is hidden automatically when the frontend client ID is
 - If the LLM provider is down, the rule-based fallback engine is used automatically. Every recommendation includes `fallback_used` and `fallback_reason` so clients always know which engine produced the analysis.
 - The scraper runs as a daemon thread via APScheduler — it starts automatically when the Flask app boots and does not block the main server.
 - Internships are de-duplicated by `apply_url` during upsert, so repeated scraper runs never create duplicate entries.
+- Scraper supports global country coverage (source-dependent) and tags each listing with `is_remote` and `work_mode`.
+- Recommendation flow prioritizes internships that match the user's profile location, while still allowing remote opportunities.

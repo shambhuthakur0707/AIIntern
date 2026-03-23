@@ -13,17 +13,19 @@ from datetime import datetime
 try:
     from .internship_filters import (
         extract_required_skills,
+        infer_work_mode,
         is_internship_listing,
         location_matches_hint,
-        normalize_india_state_location,
+        normalize_supported_location,
         normalize_text,
     )
 except ImportError:
     from scrapers.internship_filters import (  # type: ignore
         extract_required_skills,
+        infer_work_mode,
         is_internship_listing,
         location_matches_hint,
-        normalize_india_state_location,
+        normalize_supported_location,
         normalize_text,
     )
 
@@ -31,7 +33,15 @@ logger = logging.getLogger(__name__)
 
 ADZUNA_BASE = "https://api.adzuna.com/v1/api/jobs"
 
-INDIA_COUNTRY_CODE = "in"
+COUNTRY_TARGETS = [
+    {"code": "in", "name": "India"},
+    {"code": "us", "name": "USA"},
+    {"code": "gb", "name": "United Kingdom"},
+    {"code": "au", "name": "Australia"},
+    {"code": "ca", "name": "Canada"},
+    {"code": "de", "name": "Germany"},
+    {"code": "fr", "name": "France"},
+]
 
 SEARCH_TERMS = [
     "software internship",
@@ -75,22 +85,23 @@ def _infer_domain(title: str, description: str) -> str:
     return "Software Engineering"
 
 
-def _build_location(job: dict, country: str) -> str:
+def _build_location(job: dict, country: str, description: str) -> str:
     loc = job.get("location", {})
     display = loc.get("display_name", "")
     area = loc.get("area", [])
     area_text = ", ".join(str(a) for a in area if a)
-    normalized = normalize_india_state_location(
+    normalized = normalize_supported_location(
         display or area_text,
         state=area_text,
         country=country,
+        description=description,
     )
     if normalized:
         return normalized
 
     # Try fallback using latitude/longitude area strings when display is noisy.
     if area_text:
-        return normalize_india_state_location(area_text, country=country)
+        return normalize_supported_location(area_text, country=country, description=description)
 
     return ""
 
@@ -111,7 +122,7 @@ def _map_job(job: dict, country: str) -> dict:
     title = job.get("title", "Internship")
     company = (job.get("company") or {}).get("display_name", "Unknown Company")
     description = job.get("description", "")
-    normalized_location = _build_location(job, country)
+    normalized_location = _build_location(job, country, description)
     if not normalized_location:
         return {}
 
@@ -132,6 +143,8 @@ def _map_job(job: dict, country: str) -> dict:
         "stipend": _build_stipend(job),
         "duration": "3–6 months",
         "location": normalized_location,
+        "is_remote": normalized_location.lower().startswith("remote"),
+        "work_mode": infer_work_mode(normalized_location, description),
         "openings": 1,
         "apply_url": job.get("redirect_url", ""),
         "source": "adzuna",
@@ -156,50 +169,49 @@ def fetch_internships(app_id: str, api_key: str, location: str = "") -> list:
         return []
 
     location_hint = normalize_text(location)
-    if location_hint and "india" not in location_hint.lower():
-        location_clause = f"{location_hint}, India"
-    elif location_hint:
-        location_clause = location_hint
-    else:
-        location_clause = "India"
-
     results = []
-    for term in SEARCH_TERMS:
-        url = f"{ADZUNA_BASE}/{INDIA_COUNTRY_CODE}/search/1"
-        params = {
-            "app_id": app_id,
-            "app_key": api_key,
-            "results_per_page": 20,
-            "what": f"{term} {location_clause}".strip(),
-            "content-type": "application/json",
-        }
-        try:
-            resp = requests.get(url, params=params, timeout=20)
-            if resp.status_code == 429:
-                logger.warning("Adzuna: rate limit reached for India endpoint.")
-                break
-            resp.raise_for_status()
-            jobs = resp.json().get("results", [])
-            added = 0
-            for job in jobs:
-                title = job.get("title", "")
-                desc = job.get("description", "")
-                if not is_internship_listing(title, desc):
-                    continue
-                mapped = _map_job(job, "India")
-                if not mapped:
-                    continue
-                if not location_matches_hint(mapped["location"], location_hint):
-                    continue
-                results.append(mapped)
-                added += 1
-            logger.info(
-                "Adzuna: %d internships kept (of %d) for '%s' in India",
-                added,
-                len(jobs),
-                term,
-            )
-        except requests.RequestException as exc:
-            logger.error("Adzuna: request failed for '%s': %s", term, exc)
+    for target in COUNTRY_TARGETS:
+        country_name = target["name"]
+        country_code = target["code"]
+        location_clause = location_hint or country_name
+
+        for term in SEARCH_TERMS:
+            url = f"{ADZUNA_BASE}/{country_code}/search/1"
+            params = {
+                "app_id": app_id,
+                "app_key": api_key,
+                "results_per_page": 20,
+                "what": f"{term} {location_clause}".strip(),
+                "content-type": "application/json",
+            }
+            try:
+                resp = requests.get(url, params=params, timeout=20)
+                if resp.status_code == 429:
+                    logger.warning("Adzuna: rate limit reached for %s endpoint.", country_name)
+                    break
+                resp.raise_for_status()
+                jobs = resp.json().get("results", [])
+                added = 0
+                for job in jobs:
+                    title = job.get("title", "")
+                    desc = job.get("description", "")
+                    if not is_internship_listing(title, desc):
+                        continue
+                    mapped = _map_job(job, country_name)
+                    if not mapped:
+                        continue
+                    if not location_matches_hint(mapped["location"], location_hint):
+                        continue
+                    results.append(mapped)
+                    added += 1
+                logger.info(
+                    "Adzuna: %d internships kept (of %d) for '%s' in %s",
+                    added,
+                    len(jobs),
+                    term,
+                    country_name,
+                )
+            except requests.RequestException as exc:
+                logger.error("Adzuna: request failed for '%s' in %s: %s", term, country_name, exc)
 
     return results

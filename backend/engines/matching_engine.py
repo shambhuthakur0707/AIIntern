@@ -6,6 +6,7 @@ internships below a 25% overlap threshold.
 """
 
 import logging
+import re
 from typing import Any, Dict, List
 
 from flask import current_app
@@ -15,6 +16,26 @@ logger = logging.getLogger(__name__)
 # ── Config ───────────────────────────────────────────────────────────
 MIN_OVERLAP_PCT = 25.0   # Filter out internships below this overlap %
 MAX_INTERNSHIPS = 100     # Safety cap on DB fetch
+
+
+def _normalize_location_text(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
+def _location_is_match(user_location: str, internship: Dict[str, Any]) -> bool:
+    user_loc = _normalize_location_text(user_location)
+    if not user_loc:
+        return True
+
+    intern_loc = _normalize_location_text(internship.get("location", ""))
+    if not intern_loc:
+        return False
+
+    if internship.get("is_remote") is True or "remote" in intern_loc:
+        return True
+
+    # Match if one side contains the other, useful for city/state/country granularity.
+    return user_loc in intern_loc or intern_loc in user_loc
 
 
 def compute_skill_overlap(
@@ -75,6 +96,7 @@ def fetch_and_filter(user_profile: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     db = current_app.config["DB"]
     user_skills: List[str] = user_profile.get("skills", [])
+    user_location: str = user_profile.get("location", "")
 
     docs = list(db.internships.find())
     logger.info("Fetched %d internships from DB", len(docs))
@@ -102,5 +124,24 @@ def fetch_and_filter(user_profile: Dict[str, Any]) -> List[Dict[str, Any]]:
         "Filtered to %d internships (>= %.0f%% overlap)",
         len(filtered),
         MIN_OVERLAP_PCT,
+    )
+
+    if not user_location:
+        return filtered
+
+    preferred = [doc for doc in filtered if _location_is_match(user_location, doc)]
+    if preferred:
+        logger.info(
+            "Location-aware filter kept %d/%d internships for user location '%s'",
+            len(preferred),
+            len(filtered),
+            user_location,
+        )
+        return preferred
+
+    logger.info(
+        "No internships matched user location '%s'; returning %d fallback results",
+        user_location,
+        len(filtered),
     )
     return filtered

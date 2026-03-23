@@ -7,7 +7,7 @@ are persisted in MongoDB until their deadline expires.
 Internships are de-duplicated by apply_url so re-runs don't create duplicates.
 
 Configured source policy:
-- Adzuna (India internships)
+- Adzuna (multi-country internships)
 - Apify (LinkedIn jobs + ATS jobs actors)
 """
 
@@ -72,9 +72,10 @@ def run_scraper_job(app, location: str = ""):
             from .cleanup import run_cleanup
             from .internship_filters import (
                 extract_required_skills,
+                infer_work_mode,
                 is_internship_listing,
                 location_matches_hint,
-                normalize_india_state_location,
+                normalize_supported_location,
             )
         except ImportError:
             from scrapers.adzuna_scraper import fetch_internships as adzuna_fetch
@@ -82,9 +83,10 @@ def run_scraper_job(app, location: str = ""):
             from scrapers.cleanup import run_cleanup
             from scrapers.internship_filters import (  # type: ignore
                 extract_required_skills,
+                infer_work_mode,
                 is_internship_listing,
                 location_matches_hint,
-                normalize_india_state_location,
+                normalize_supported_location,
             )
 
         try:
@@ -105,7 +107,7 @@ def run_scraper_job(app, location: str = ""):
         logger.info("Scraping with location filter: '%s'", location or "(all)")
 
         def sanitize_records(records: list) -> list:
-            """Final safety gate: internship-only + India state location + concrete skills."""
+            """Final safety gate: internship-only + supported locations + concrete skills."""
             kept = []
             for record in records:
                 title = (record.get("title") or "").strip()
@@ -113,7 +115,10 @@ def run_scraper_job(app, location: str = ""):
                 if not is_internship_listing(title, description):
                     continue
 
-                normalized_location = normalize_india_state_location(record.get("location", ""))
+                normalized_location = normalize_supported_location(
+                    record.get("location", ""),
+                    description=description,
+                )
                 if not normalized_location:
                     continue
                 if not location_matches_hint(normalized_location, location):
@@ -131,6 +136,8 @@ def run_scraper_job(app, location: str = ""):
                 clean = dict(record)
                 clean["location"] = normalized_location
                 clean["required_skills"] = skills
+                clean["is_remote"] = normalized_location.lower().startswith("remote")
+                clean["work_mode"] = infer_work_mode(normalized_location, description)
                 kept.append(clean)
             return kept
 
