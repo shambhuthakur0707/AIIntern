@@ -3,7 +3,11 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 function navClassName({ isActive }) {
-    return `text-sm font-medium transition-colors ${isActive ? 'text-white' : 'text-gray-400 hover:text-white'}`
+    return `text-sm font-medium transition-all duration-200 px-3 py-1.5 rounded-lg ${
+        isActive
+            ? 'bg-white/10 text-white border border-white/15 shadow-sm'
+            : 'text-gray-400 hover:text-white hover:bg-white/5'
+    }`
 }
 
 const NAV_LINKS = [
@@ -86,9 +90,9 @@ export default function Navbar() {
                             to={to}
                             onClick={() => setMenuOpen(false)}
                             className={({ isActive }) =>
-                                `block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                `block px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
                                     isActive
-                                        ? 'bg-white/10 text-white'
+                                        ? 'bg-white/10 text-white border border-white/15'
                                         : 'text-gray-400 hover:text-white hover:bg-white/5'
                                 }`
                             }
@@ -102,7 +106,7 @@ export default function Navbar() {
                     )}
                     <button
                         onClick={() => { setMenuOpen(false); handleLogout() }}
-                        className="block w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-red-400 hover:bg-white/5 transition-colors"
+                        className="block w-full text-left px-3 py-2 rounded-xl text-sm font-medium text-rose-400 hover:bg-white/5 transition-colors"
                     >
                         Sign out
                     </button>

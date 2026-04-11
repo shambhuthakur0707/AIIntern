@@ -53,18 +53,19 @@ export default function LoginPage() {
 
                 {/* Logo */}
                 <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-500 to-violet-500 shadow-xl shadow-brand-500/30 mb-4">
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-500 to-violet-500 shadow-2xl shadow-brand-500/40 mb-4">
                         <span className="text-2xl font-black text-white">AI</span>
                     </div>
                     <h1 className="text-3xl font-extrabold text-white">AIIntern</h1>
-                    <p className="text-gray-400 mt-1.5">Sign in to your AIIntern account</p>
+                    <p className="text-gray-400 mt-1.5 text-sm">Sign in to your AIIntern account</p>
                 </div>
 
                 {/* Card */}
                 <div className="glass-card p-8 shadow-2xl">
                     {error && (
-                        <div className="mb-4 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm px-4 py-3 rounded-xl animate-fade-in">
-                            {error}
+                        <div className="mb-4 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm px-4 py-3 rounded-xl animate-fade-in flex items-start gap-2">
+                            <span className="mt-0.5 shrink-0">⚠</span>
+                            <span>{error}</span>
                         </div>
                     )}
 
@@ -137,6 +138,10 @@ export default function LoginPage() {
                         </Link>
                     </p>
                 </div>
+
+                <p className="mt-6 text-center text-xs text-gray-600">
+                    AIIntern · AI-powered internship matching
+                </p>
             </div>
         </div>
     )

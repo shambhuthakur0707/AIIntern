@@ -44,7 +44,11 @@ export default function InternshipCard({ rec, index }) {
                     </div>
                     <div>
                         <h3 className="font-bold text-white text-base leading-tight">{title}</h3>
-                        <p className="text-sm text-gray-400">{rec.company} � <span className="text-brand-400">{rec.domain}</span></p>
+                        <p className="text-sm text-gray-400">
+                            {rec.company}
+                            {rec.company && rec.domain ? <span className="mx-1 opacity-50">·</span> : null}
+                            {rec.domain ? <span className="text-brand-400">{rec.domain}</span> : null}
+                        </p>
                     </div>
                 </div>
                 {/* Meta */}
@@ -78,8 +82,8 @@ export default function InternshipCard({ rec, index }) {
             )}
 
             {/* Recommendation summary */}
-            <div className="flex items-start gap-2 text-sm text-emerald-400">
-                <span className="mt-0.5 flex-shrink-0">OK</span>
+            <div className="flex items-start gap-2 text-sm text-emerald-400 bg-emerald-500/5 border border-emerald-500/20 rounded-xl px-3 py-2.5">
+                <span className="mt-0.5 flex-shrink-0">✓</span>
                 <span>{recommendationSummary}</span>
             </div>
 

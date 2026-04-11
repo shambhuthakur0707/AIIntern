@@ -183,7 +183,7 @@ function RecCard({ rec, index }) {
 
             <div className="px-5 py-3 border-t border-white/5 flex justify-end">
                 <a href={rec.apply_url ?? '#'} target="_blank" rel="noreferrer"
-                    className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-1.5 rounded-lg font-medium transition-colors">
+                    className="btn-primary !py-1.5 !px-4 text-xs">
                     Apply now →
                 </a>
             </div>
@@ -353,7 +353,7 @@ export default function DashboardPage() {
                                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddSkill() } }}
                                 placeholder="Add a skill…" className="form-input flex-1 !py-1.5 !text-sm" disabled={profileBusy} />
                             <button type="button" onClick={handleAddSkill} disabled={profileBusy}
-                                className="text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-1.5 rounded-lg font-medium transition-colors">Add</button>
+                                className="btn-secondary !py-1.5 !px-4 text-sm shrink-0">Add</button>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-1.5">
                             {suggestions.map(s => (
@@ -395,7 +395,7 @@ export default function DashboardPage() {
                             <p className="text-xs text-gray-400 mt-1 max-w-[180px] mx-auto">Scores, ranks, and explains every match using AI</p>
                         </div>
                         <button id="run-agent-btn" onClick={runAgent} disabled={loading}
-                            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2">
+                            className="w-full btn-primary flex items-center justify-center gap-2">
                             {loading
                                 ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Thinking…</>
                                 : <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>Run AI Agent</>

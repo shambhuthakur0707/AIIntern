@@ -317,8 +317,9 @@ export default function StatisticsPage() {
                 {/* No Data Message */}
                 {matchStats.total_matches === 0 && (
                     <section className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center">
+                        <div className="text-4xl mb-3">📊</div>
                         <p className="text-gray-400 mb-4">Run the matching agent to see your performance statistics</p>
-                        <a href="/dashboard" className="inline-block bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg font-medium transition-colors">
+                        <a href="/dashboard" className="btn-primary inline-flex items-center gap-2">
                             Go to Dashboard →
                         </a>
                     </section>

@@ -317,8 +317,9 @@ export default function InternshipsPage() {
                 )}
 
                 {!loading && error && (
-                    <section className="bg-rose-500/10 border border-rose-500/30 text-rose-300 px-5 py-4 rounded-2xl">
-                        {error}
+                    <section className="bg-rose-500/10 border border-rose-500/30 text-rose-300 px-5 py-4 rounded-2xl flex items-start gap-2">
+                        <span className="shrink-0 mt-0.5">⚠</span>
+                        <span>{error}</span>
                     </section>
                 )}
 
