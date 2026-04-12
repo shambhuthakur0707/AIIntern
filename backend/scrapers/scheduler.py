@@ -71,6 +71,7 @@ def run_scraper_job(app, location: str = ""):
             from .apify_scraper import fetch_internships as apify_fetch
             from .cleanup import run_cleanup
             from .internship_filters import (
+                extract_requirement_text,
                 extract_required_skills,
                 infer_work_mode,
                 is_internship_listing,
@@ -82,6 +83,7 @@ def run_scraper_job(app, location: str = ""):
             from scrapers.apify_scraper import fetch_internships as apify_fetch
             from scrapers.cleanup import run_cleanup
             from scrapers.internship_filters import (  # type: ignore
+                extract_requirement_text,
                 extract_required_skills,
                 infer_work_mode,
                 is_internship_listing,
@@ -124,18 +126,38 @@ def run_scraper_job(app, location: str = ""):
                 if not location_matches_hint(normalized_location, location):
                     continue
 
-                requirement_text = " ".join(record.get("required_skills") or [])
+                requirement_text = extract_requirement_text(
+                    description=description,
+                    explicit_requirements=record.get("requirement_text", ""),
+                )
                 skills = extract_required_skills(
                     title=title,
                     description=description,
                     requirement_text=requirement_text,
                 )
+                if len(skills) < 2:
+                    expanded = extract_required_skills(
+                        title=title,
+                        description=description,
+                        requirement_text=description,
+                        limit=12,
+                    )
+                    merged = []
+                    seen = set()
+                    for skill in (skills + expanded):
+                        key = skill.lower()
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        merged.append(skill)
+                    skills = merged[:12]
                 if not skills:
                     continue
 
                 clean = dict(record)
                 clean["location"] = normalized_location
                 clean["required_skills"] = skills
+                clean["requirement_text"] = requirement_text
                 clean["is_remote"] = normalized_location.lower().startswith("remote")
                 clean["work_mode"] = infer_work_mode(normalized_location, description)
                 kept.append(clean)

@@ -12,6 +12,7 @@ from datetime import datetime
 
 try:
     from .internship_filters import (
+        extract_requirement_text,
         extract_required_skills,
         infer_work_mode,
         is_internship_listing,
@@ -21,6 +22,7 @@ try:
     )
 except ImportError:
     from scrapers.internship_filters import (  # type: ignore
+        extract_requirement_text,
         extract_required_skills,
         infer_work_mode,
         is_internship_listing,
@@ -126,11 +128,29 @@ def _map_job(job: dict, country: str) -> dict:
     if not normalized_location:
         return {}
 
+    requirement_text = extract_requirement_text(description=description)
     skills = extract_required_skills(
         title=title,
         description=description,
-        requirement_text=description,
+        requirement_text=requirement_text,
     )
+    if len(skills) < 2:
+        # Backfill from full post text when requirement section is too generic.
+        expanded = extract_required_skills(
+            title=title,
+            description=description,
+            requirement_text=description,
+            limit=12,
+        )
+        merged = []
+        seen = set()
+        for skill in (skills + expanded):
+            key = skill.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(skill)
+        skills = merged[:12]
     if not skills:
         return {}
 
@@ -138,6 +158,7 @@ def _map_job(job: dict, country: str) -> dict:
         "title": title,
         "company": company,
         "required_skills": skills,
+        "requirement_text": requirement_text,
         "description": description[:1200] if description else "",
         "domain": _infer_domain(title, description),
         "stipend": _build_stipend(job),

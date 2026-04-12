@@ -54,6 +54,7 @@ def format_response(
             "openings": rank_data.get("openings", 0),
             "apply_url": rank_data.get("apply_url", ""),
             "required_skills": rank_data.get("required_skills", []),
+            "requirement_text": rank_data.get("requirement_text", ""),
             # ── Deterministic scores ─────────────────────────
             "weighted_score": rank_data.get("weighted_score", 0),
             "score_breakdown": rank_data.get("score_breakdown", {}),

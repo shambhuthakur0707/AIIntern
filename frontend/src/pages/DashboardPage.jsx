@@ -97,7 +97,7 @@ function RecCard({ rec, index }) {
     const [copied, setCopied] = useState(false)
     const roadmap = rec.learning_roadmap ?? []
     const requiredSkills = rec.required_skills ?? []
-    const score = Number(rec.confidence_score ?? 0).toFixed(0)
+    const score = Number(rec.weighted_score ?? rec.confidence_score ?? 0).toFixed(1)
     const scoreBg = score >= 70 ? 'bg-emerald-500/15 border-emerald-500/30' : score >= 45 ? 'bg-indigo-500/15 border-indigo-500/30' : 'bg-amber-500/15 border-amber-500/30'
     const scoreText = score >= 70 ? 'text-emerald-400' : score >= 45 ? 'text-indigo-400' : 'text-amber-400'
 
@@ -127,13 +127,20 @@ function RecCard({ rec, index }) {
                 </div>
                 <div className={`text-center px-3 py-2 rounded-xl border shrink-0 ${scoreBg}`}>
                     <p className={`text-xl font-extrabold leading-none ${scoreText}`}>{score}%</p>
-                    <p className="text-[10px] text-gray-500 mt-0.5">Confidence</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">Match</p>
                 </div>
             </div>
 
             {rec.reasoning && (
                 <div className="px-5 pb-4">
                     <p className="text-xs text-gray-400 leading-relaxed border-l-2 border-indigo-500/50 pl-3">{rec.reasoning}</p>
+                </div>
+            )}
+
+            {rec.requirement_text && (
+                <div className="px-5 pb-4">
+                    <p className="text-[10px] text-gray-500 mb-1">Requirements from post:</p>
+                    <p className="text-xs text-gray-400 leading-relaxed line-clamp-4">{rec.requirement_text}</p>
                 </div>
             )}
 
@@ -240,7 +247,7 @@ export default function DashboardPage() {
             const result = data.data.match_result
             const entry = {
                 timestamp: new Date().toISOString(),
-                confidence: result?.confidence_score ?? null,
+                confidence: result?.recommendations?.[0]?.weighted_score ?? result?.recommendations?.[0]?.confidence_score ?? null,
                 top_match: result?.recommendations?.[0]?.internship_title ?? 'Unknown',
             }
             setMatchHistory(prev => {
@@ -301,8 +308,8 @@ export default function DashboardPage() {
 
     const recs = matchResult?.recommendations ?? []
     const meta = matchResult?.meta ?? {}
-    const avgConf = recs.length ? recs.reduce((s, r) => s + Number(r.confidence_score || 0), 0) / recs.length : 0
-    const confScore = matchResult?.confidence_score ?? avgConf
+    const avgConf = recs.length ? recs.reduce((s, r) => s + Number(r.weighted_score ?? r.confidence_score ?? 0), 0) / recs.length : 0
+    const confScore = avgConf
     const totalGaps = recs.reduce((s, r) => s + (r.missing_skills?.length ?? 0), 0)
     const skillsMatched = recs.reduce((s, r) => s + (r.matched_skills?.length ?? 0), 0)
     const overallSummary = matchResult?.overall_ai_summary || `Generated ${meta.returned ?? recs.length} recommendations from ${meta.passed_filter ?? 0} filtered internships.`
@@ -447,7 +454,7 @@ export default function DashboardPage() {
 
                         {/* Stat cards */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <StatCard label="Match Confidence" value={`${confScore.toFixed(0)}%`} icon="🎯" color="bg-indigo-500/20" />
+                            <StatCard label="Average Match" value={`${confScore.toFixed(1)}%`} icon="🎯" color="bg-indigo-500/20" />
                             <StatCard label="Recommendations" value={recs.length} icon="🏆" color="bg-violet-500/20" sub={`from ${meta.passed_filter ?? 0} candidates`} />
                             <StatCard label="Skills Matched" value={skillsMatched} icon="✅" color="bg-emerald-500/20" />
                             <StatCard label="Skill Gaps Found" value={totalGaps} icon="📈" color="bg-amber-500/20" sub="across all matches" />
@@ -501,7 +508,7 @@ export default function DashboardPage() {
                                             <li key={i} className="flex items-center justify-between text-xs bg-white/5 rounded-lg px-3 py-2">
                                                 <span className="text-gray-500">{new Date(h.timestamp).toLocaleString()}</span>
                                                 <span className="text-gray-300 truncate max-w-[40%] mx-2">{h.top_match}</span>
-                                                <span className="text-indigo-400 font-semibold shrink-0">{h.confidence != null ? `${Math.round(h.confidence * 100)}%` : 'N/A'}</span>
+                                                <span className="text-indigo-400 font-semibold shrink-0">{h.confidence != null ? `${Math.round(h.confidence)}%` : 'N/A'}</span>
                                             </li>
                                         ))}
                                     </ul>

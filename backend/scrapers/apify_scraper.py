@@ -16,6 +16,7 @@ import requests
 
 try:
     from .internship_filters import (
+        extract_requirement_text,
         extract_required_skills,
         infer_work_mode,
         is_internship_listing,
@@ -25,6 +26,7 @@ try:
     )
 except ImportError:
     from scrapers.internship_filters import (  # type: ignore
+        extract_requirement_text,
         extract_required_skills,
         infer_work_mode,
         is_internship_listing,
@@ -110,8 +112,25 @@ def _map_row(row: dict[str, Any], source: str, location_hint: str) -> dict:
     if not is_internship_listing(title, description):
         return {}
 
-    requirement_text = _first_non_empty(row, ["requirements", "qualifications", "skills"])
+    raw_requirements = _first_non_empty(row, ["requirements", "qualifications", "skills", "jobRequirements"])
+    requirement_text = extract_requirement_text(description=description, explicit_requirements=raw_requirements)
     skills = extract_required_skills(title=title, description=description, requirement_text=requirement_text)
+    if len(skills) < 2:
+        expanded = extract_required_skills(
+            title=title,
+            description=description,
+            requirement_text=description,
+            limit=12,
+        )
+        merged = []
+        seen = set()
+        for skill in (skills + expanded):
+            key = skill.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(skill)
+        skills = merged[:12]
     if not skills:
         return {}
 
@@ -125,6 +144,7 @@ def _map_row(row: dict[str, Any], source: str, location_hint: str) -> dict:
         "title": title,
         "company": company,
         "required_skills": skills,
+        "requirement_text": requirement_text,
         "description": (description or "")[:1200],
         "domain": _infer_domain(title, description),
         "stipend": "Not disclosed",

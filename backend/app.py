@@ -49,6 +49,8 @@ def create_app():
     db.internship_analyses.create_index("expires_at")
     db.users.create_index([("email", 1)], unique=True)
     db.otp_codes.create_index("expires_at", expireAfterSeconds=0)
+    db.applications.create_index([("user_id", 1), ("status", 1)])
+    db.applications.create_index([("user_id", 1), ("internship_id", 1)])
 
     # Register blueprints
     try:
@@ -57,18 +59,21 @@ def create_app():
         from .routes.dashboard_routes import dashboard_bp
         from .routes.internships_routes import internships_bp
         from .routes.scraper_routes import scraper_bp
+        from .routes.applications_routes import applications_bp
     except ImportError:
         from routes.auth_routes import auth_bp
         from routes.agent_routes import agent_bp
         from routes.dashboard_routes import dashboard_bp
         from routes.internships_routes import internships_bp
         from routes.scraper_routes import scraper_bp
+        from routes.applications_routes import applications_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(agent_bp, url_prefix="/api/agent")
     app.register_blueprint(dashboard_bp, url_prefix="/api")
     app.register_blueprint(internships_bp, url_prefix="/api/internships")
     app.register_blueprint(scraper_bp, url_prefix="/api/scraper")
+    app.register_blueprint(applications_bp, url_prefix="/api/applications")
 
     # Scraping is now user-triggered only — no auto-scrape on startup
 

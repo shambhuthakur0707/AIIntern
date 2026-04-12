@@ -1,6 +1,7 @@
 from flask import Blueprint, current_app, request
 from flask_jwt_extended import jwt_required
 from urllib.parse import quote_plus
+from bson import ObjectId
 import hashlib
 import logging
 import re
@@ -10,10 +11,12 @@ try:
     from ..utils.response_utils import success_response, error_response
     from ..utils.jwt_utils import get_current_user
     from ..engines import llm_engine, fallback_engine, matching_engine, ranking_engine
+    from ..models.internship_model import sanitize_internship
 except ImportError:
     from utils.response_utils import success_response, error_response
     from utils.jwt_utils import get_current_user
     from engines import llm_engine, fallback_engine, matching_engine, ranking_engine
+    from models.internship_model import sanitize_internship
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +258,7 @@ def list_internships():
                 "is_remote": bool(doc.get("is_remote", False)),
                 "work_mode": _normalize(doc.get("work_mode", "")) or ("Remote" if bool(doc.get("is_remote", False)) else "On-site/Hybrid"),
                 "required_skills": doc.get("required_skills", []),
+                "requirement_text": _normalize(doc.get("requirement_text", "")),
                 "description": _normalize(doc.get("description", "")),
                 "apply_url": _build_apply_url(doc),
             }
@@ -339,3 +343,249 @@ def list_internships():
     except Exception as exc:
         logger.exception("Failed to load internships")
         return error_response("Failed to load internships", 500)
+
+
+# ── Saved internships ─────────────────────────────────────────────────────────
+
+@internships_bp.route("/saved", methods=["GET"])
+@jwt_required()
+def list_saved_internships():
+    """GET /api/internships/saved — return all internships bookmarked by the user."""
+    try:
+        db = current_app.config["DB"]
+        user = get_current_user()
+        if not user:
+            return error_response("User not found", 404)
+
+        saved_ids = user.get("saved_internships", [])
+        if not saved_ids:
+            return success_response(data={"internships": []}, message="No saved internships")
+
+        docs = list(db.internships.find({"_id": {"$in": saved_ids}}))
+        internships = []
+        for doc in docs:
+            item = sanitize_internship(doc)
+            item["saved"] = True
+            internships.append(item)
+
+        return success_response(data={"internships": internships}, message="Saved internships loaded")
+    except Exception:
+        logger.exception("Failed to load saved internships")
+        return error_response("Failed to load saved internships", 500)
+
+
+@internships_bp.route("/<internship_id>/save", methods=["POST"])
+@jwt_required()
+def toggle_save_internship(internship_id):
+    """POST /api/internships/:id/save — toggle save/unsave for the current user."""
+    try:
+        db = current_app.config["DB"]
+        user = get_current_user()
+        if not user:
+            return error_response("User not found", 404)
+
+        try:
+            iid = ObjectId(internship_id)
+        except Exception:
+            return error_response("Invalid internship id", 400)
+
+        if not db.internships.find_one({"_id": iid}):
+            return error_response("Internship not found", 404)
+
+        user_id = user["_id"]
+        saved_ids = user.get("saved_internships", [])
+        currently_saved = iid in saved_ids
+
+        if currently_saved:
+            db.users.update_one({"_id": user_id}, {"$pull": {"saved_internships": iid}})
+        else:
+            db.users.update_one({"_id": user_id}, {"$addToSet": {"saved_internships": iid}})
+
+        return success_response(
+            data={"saved": not currently_saved, "internship_id": internship_id},
+            message="Saved" if not currently_saved else "Unsaved",
+        )
+    except Exception:
+        logger.exception("Failed to toggle save")
+        return error_response("Failed to toggle save", 500)
+
+
+# ── Interview prep ────────────────────────────────────────────────────────────
+
+# Hard-coded question bank per domain (used as fallback when LLM is unavailable)
+QUESTION_BANK = {
+    "default": [
+        {"question": "Tell me about yourself and why you're interested in this role.",
+         "type": "behavioral",
+         "tip": "Use the Present–Past–Future structure: where you are now, what led you here, and where you're headed."},
+        {"question": "Describe a challenging project you worked on and how you handled it.",
+         "type": "behavioral",
+         "tip": "Use the STAR method: Situation, Task, Action, Result. Quantify the result wherever possible."},
+        {"question": "How do you prioritize tasks when working on multiple deadlines?",
+         "type": "situational",
+         "tip": "Mention a concrete framework (Eisenhower matrix, time-blocking) and give a brief real example."},
+        {"question": "Walk me through a technical problem you solved recently.",
+         "type": "technical",
+         "tip": "Break your answer into: problem definition → your investigation → solution chosen → trade-offs considered."},
+        {"question": "How do you stay current with industry trends and new technologies?",
+         "type": "behavioral",
+         "tip": "Name specific resources: newsletters, papers, communities. Shows genuine intellectual curiosity."},
+        {"question": "Describe a situation where you disagreed with a teammate. How did you resolve it?",
+         "type": "behavioral",
+         "tip": "Focus on listening first, finding common ground, and the positive outcome — not on being right."},
+        {"question": "Where do you see yourself in 2–3 years, and how does this internship fit that path?",
+         "type": "situational",
+         "tip": "Show a coherent story: this role teaches X, which feeds into your goal Y. Avoid generic answers."},
+    ],
+    "machine learning": [
+        {"question": "Explain the bias-variance tradeoff and how you handle it in practice.",
+         "type": "technical",
+         "tip": "Give a concrete model example — e.g., deep network vs. linear model — and mention cross-validation."},
+        {"question": "How would you debug a model that performs well on training data but poorly in production?",
+         "type": "technical",
+         "tip": "Cover distribution shift, feature leakage, missing values in prod, and monitoring strategies."},
+        {"question": "Walk me through how you would design an end-to-end ML pipeline.",
+         "type": "technical",
+         "tip": "Mention data ingestion → feature engineering → training → evaluation → deployment → monitoring."},
+        {"question": "What evaluation metrics would you choose for a class-imbalanced dataset? Why?",
+         "type": "technical",
+         "tip": "Precision-recall AUC, F1, and Cohen's kappa are stronger than accuracy here — explain why briefly."},
+        {"question": "Describe a data preprocessing challenge you encountered and how you solved it.",
+         "type": "behavioral",
+         "tip": "Be specific: missing values strategy, outlier handling, or encoding choice. Show you think critically."},
+        {"question": "How do you explain a complex ML result to a non-technical stakeholder?",
+         "type": "behavioral",
+         "tip": "Use analogies, avoid jargon, and anchor to business impact. SHAP plots are a great concrete example."},
+        {"question": "If you had to choose between model accuracy and model interpretability, how would you decide?",
+         "type": "situational",
+         "tip": "It depends on the domain: healthcare/finance favor interpretability; recommendation systems can tolerate black-boxes."},
+    ],
+    "web development": [
+        {"question": "Explain the difference between server-side rendering and client-side rendering.",
+         "type": "technical",
+         "tip": "Mention SEO, first-contentful paint, and suitable use cases for each approach."},
+        {"question": "How do you optimize the performance of a web application?",
+         "type": "technical",
+         "tip": "Cover code splitting, lazy loading, caching (CDN, HTTP cache), image optimization, and critical CSS."},
+        {"question": "Walk me through how a browser handles an HTTP request from start to screen.",
+         "type": "technical",
+         "tip": "DNS → TCP → TLS → HTTP → parsing HTML → CSSOM → render tree → layout → paint. Show you know the stack."},
+        {"question": "Describe a bug that was difficult to reproduce and how you tracked it down.",
+         "type": "behavioral",
+         "tip": "Methodical debugging story: logs, browser dev tools, minimal reproduction case, bisect approach."},
+        {"question": "How do you ensure that your UI is accessible to all users?",
+         "type": "technical",
+         "tip": "ARIA roles, semantic HTML, keyboard navigation, contrast ratios (WCAG 2.1), and screen-reader testing."},
+        {"question": "How do you decide whether to store state on the client or the server?",
+         "type": "situational",
+         "tip": "Client for UI ephemera; server for authoritative data. Mention security implications of client-side state."},
+        {"question": "What steps do you take to secure a web application before deployment?",
+         "type": "technical",
+         "tip": "HTTPS, CSP, input validation, parameterized queries, dependency audits, least-privilege principles."},
+    ],
+    "data science": [
+        {"question": "How do you approach exploratory data analysis on a new dataset?",
+         "type": "technical",
+         "tip": "Shape/dtypes → nulls → distributions → correlations → outliers → domain sanity checks."},
+        {"question": "Explain the difference between correlation and causation with an example.",
+         "type": "technical",
+         "tip": "Ice cream / drowning classic, then pivot to how you'd design an experiment to establish causation."},
+        {"question": "How would you handle missing data in a dataset with 30% nulls in one column?",
+         "type": "technical",
+         "tip": "Ask: is it MCAR, MAR, or MNAR? Options: drop, mean/median/mode impute, KNN impute, model-based."},
+        {"question": "Describe a time you presented data findings to stakeholders. What made it effective?",
+         "type": "behavioral",
+         "tip": "Lead with the business question, show the insight visually, quantify impact, then show the analysis. Not vice versa."},
+        {"question": "What's the difference between a z-test and a t-test? When do you use each?",
+         "type": "technical",
+         "tip": "Z: known population variance or large n (>30). T: unknown variance or small n. Emphasize assumptions."},
+        {"question": "How do you validate that your analysis hasn't been affected by survivorship bias?",
+         "type": "technical",
+         "tip": "Think about what data is absent. Ask: who/what didn't make it into the dataset and why?"},
+        {"question": "Tell me about a project where the data didn't tell the story you expected.",
+         "type": "behavioral",
+         "tip": "Shows intellectual honesty. Walk through how you revised your hypothesis and what you concluded."},
+    ],
+}
+
+
+def _get_question_bank_for_domain(domain: str) -> list:
+    """Return the best-matching question bank for a given domain."""
+    domain_lower = (domain or "").lower()
+    for key in QUESTION_BANK:
+        if key != "default" and key in domain_lower:
+            return QUESTION_BANK[key]
+    return QUESTION_BANK["default"]
+
+
+@internships_bp.route("/<internship_id>/interview-prep", methods=["POST"])
+@jwt_required()
+def interview_prep(internship_id):
+    """POST /api/internships/:id/interview-prep — generates 7 interview questions."""
+    try:
+        db = current_app.config["DB"]
+        user = get_current_user()
+        if not user:
+            return error_response("User not found", 404)
+
+        try:
+            iid = ObjectId(internship_id)
+        except Exception:
+            return error_response("Invalid internship id", 400)
+
+        internship = db.internships.find_one({"_id": iid})
+        if not internship:
+            return error_response("Internship not found", 404)
+
+        title = internship.get("title", "Software Engineering")
+        company = internship.get("company", "the company")
+        domain = internship.get("domain", "")
+        skills = internship.get("required_skills", [])
+        skills_str = ", ".join(skills[:10]) if skills else "general skills"
+
+        # Try LLM first ───────────────────────────────────────────────────────
+        questions = None
+        llm_used = False
+
+        try:
+            from engines import llm_engine  # noqa: PLC0415
+            prompt = (
+                f"Generate exactly 7 interview questions for a {title} internship role at {company}. "
+                f"Required skills: {skills_str}. Domain: {domain}. "
+                "Mix technical, behavioral, and situational question types. "
+                "For each question also write a short coaching tip (1-2 sentences) that helps the candidate answer well. "
+                "Return ONLY a JSON array with objects having keys: question (string), type (one of: technical, behavioral, situational), tip (string). "
+                "No markdown, no extra text."
+            )
+            raw = llm_engine.call_llm_raw(prompt) if hasattr(llm_engine, "call_llm_raw") else None
+            if raw:
+                import json  # noqa: PLC0415
+                questions = json.loads(raw)
+                if isinstance(questions, list) and len(questions) >= 5:
+                    llm_used = True
+                else:
+                    questions = None
+        except Exception:
+            pass  # Fall through to question bank
+
+        # Fallback to local bank
+        if not questions:
+            questions = _get_question_bank_for_domain(domain)
+
+        return success_response(
+            data={
+                "questions": questions,
+                "llm_used": llm_used,
+                "internship": {
+                    "id": internship_id,
+                    "title": title,
+                    "company": company,
+                    "domain": domain,
+                    "required_skills": skills,
+                },
+            },
+            message="Interview questions generated",
+        )
+    except Exception:
+        logger.exception("Failed to generate interview prep")
+        return error_response("Failed to generate interview prep", 500)

@@ -101,6 +101,25 @@ def _experience_score(user_level: str, internship: Dict[str, Any]) -> float:
     return 60.0
 
 
+def _skill_score(internship: Dict[str, Any]) -> float:
+    """
+    Blend skill coverage with absolute matched-skill depth.
+
+    Why: pure overlap_pct can make 1/1 look equal to 5/5 (both 100%).
+    This score differentiates shallow vs deep skill matches.
+    """
+    overlap_pct = float(internship.get("overlap_pct", 0.0) or 0.0)
+    matched_count = len(internship.get("matched_skills", []) or [])
+    required_count = len(internship.get("required_skills", []) or [])
+
+    if required_count <= 0:
+        return 0.0
+
+    # Saturates at 5 matched skills; preserves a stable 0-100 scale.
+    depth_score = min(matched_count, 5) / 5 * 100.0
+    return round(0.75 * overlap_pct + 0.25 * depth_score, 2)
+
+
 # ── Public API ───────────────────────────────────────────────────────
 def rank_internships(
     user_profile: Dict[str, Any],
@@ -129,7 +148,7 @@ def rank_internships(
     scored: List[Dict[str, Any]] = []
 
     for intern in filtered_internships:
-        skill_score = intern.get("overlap_pct", 0.0)
+        skill_score = _skill_score(intern)
         kw_score = _keyword_score(user_interests, intern)
         exp_score = _experience_score(user_level, intern)
 
@@ -150,6 +169,7 @@ def rank_internships(
             "location": intern.get("location", ""),
             "openings": intern.get("openings", 0),
             "required_skills": intern.get("required_skills", []),
+            "requirement_text": intern.get("requirement_text", ""),
             "apply_url": _build_apply_url(intern),
             # Scores
             "weighted_score": weighted,

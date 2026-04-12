@@ -30,6 +30,7 @@ def create_user_document(
         "resume_filename": resume_filename.strip(),
         "resume_text": resume_text,
         "last_match_result": None,                       # Populated by agent after /match
+        "saved_internships": [],                           # [ObjectId] — bookmarked internship IDs
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
     }
@@ -57,4 +58,7 @@ def sanitize_user(user_doc):
         "last_match_result": user_doc.get("last_match_result"),
         "email_verified": user_doc.get("email_verified", False),
         "auth_provider": user_doc.get("auth_provider", "email"),
+        "saved_internships": [
+            str(oid) for oid in user_doc.get("saved_internships", [])
+        ],
     }

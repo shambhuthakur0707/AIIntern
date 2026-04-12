@@ -7,10 +7,13 @@ function navClassName({ isActive }) {
 }
 
 const NAV_LINKS = [
-    { to: '/dashboard', label: 'Dashboard' },
-    { to: '/statistics', label: 'Statistics' },
+    { to: '/dashboard',   label: 'Dashboard' },
+    { to: '/statistics',  label: 'Statistics' },
     { to: '/internships', label: 'Internships' },
-    { to: '/profile', label: 'Profile' },
+    { to: '/tracker',     label: '📋 Tracker'  },
+    { to: '/saved',       label: '★ Saved'     },
+    { to: '/deadlines',   label: '📅 Deadlines' },
+    { to: '/profile',     label: 'Profile'     },
 ]
 
 export default function Navbar() {
@@ -28,8 +31,8 @@ export default function Navbar() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-between h-16 gap-4">
                     {/* Logo + desktop nav */}
-                    <div className="flex items-center gap-6">
-                        <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-6 min-w-0">
+                        <div className="flex items-center gap-3 flex-shrink-0">
                             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-violet-500 flex items-center justify-center text-white font-bold text-sm">
                                 AI
                             </div>
@@ -38,7 +41,7 @@ export default function Navbar() {
                             </span>
                         </div>
 
-                        <nav className="hidden md:flex items-center gap-4">
+                        <nav className="hidden lg:flex items-center gap-4 overflow-x-auto">
                             {NAV_LINKS.map(({ to, label }) => (
                                 <NavLink key={to} to={to} className={navClassName}>{label}</NavLink>
                             ))}
@@ -46,7 +49,7 @@ export default function Navbar() {
                     </div>
 
                     {/* Right side — user chip + sign out + hamburger */}
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 flex-shrink-0">
                         {user && (
                             <div className="hidden sm:flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
                                 <div className="w-6 h-6 rounded-full bg-gradient-to-br from-brand-500 to-violet-500 flex items-center justify-center text-xs font-bold">
@@ -66,7 +69,7 @@ export default function Navbar() {
                         {/* Hamburger — mobile only */}
                         <button
                             onClick={() => setMenuOpen((o) => !o)}
-                            className="md:hidden flex flex-col justify-center items-center w-8 h-8 gap-1.5 text-gray-400 hover:text-white transition-colors"
+                            className="lg:hidden flex flex-col justify-center items-center w-8 h-8 gap-1.5 text-gray-400 hover:text-white transition-colors"
                             aria-label="Toggle menu"
                         >
                             <span className={`block w-5 h-0.5 bg-current transition-transform duration-200 ${menuOpen ? 'rotate-45 translate-y-2' : ''}`} />
@@ -79,7 +82,7 @@ export default function Navbar() {
 
             {/* Mobile menu dropdown */}
             {menuOpen && (
-                <div className="md:hidden border-t border-white/10 bg-gray-950/95 px-4 py-4 space-y-1 animate-fade-in">
+                <div className="lg:hidden border-t border-white/10 bg-gray-950/95 px-4 py-4 space-y-1 animate-fade-in">
                     {NAV_LINKS.map(({ to, label }) => (
                         <NavLink
                             key={to}

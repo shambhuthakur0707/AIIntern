@@ -11,6 +11,11 @@ from typing import Any, Dict, List
 
 from flask import current_app
 
+try:
+    from ..scrapers.internship_filters import extract_required_skills
+except ImportError:
+    from scrapers.internship_filters import extract_required_skills  # type: ignore
+
 logger = logging.getLogger(__name__)
 
 # ── Config ───────────────────────────────────────────────────────────
@@ -106,6 +111,29 @@ def fetch_and_filter(user_profile: Dict[str, Any]) -> List[Dict[str, Any]]:
     for doc in docs[:MAX_INTERNSHIPS]:
         doc["_id"] = str(doc["_id"])
         required = doc.get("required_skills", [])
+        if len(required) < 2:
+            primary = extract_required_skills(
+                title=doc.get("title", ""),
+                description=doc.get("description", ""),
+                requirement_text=doc.get("requirement_text", ""),
+            )
+            expanded = extract_required_skills(
+                title=doc.get("title", ""),
+                description=doc.get("description", ""),
+                requirement_text=doc.get("description", ""),
+                limit=12,
+            )
+            merged = []
+            seen = set()
+            for skill in (required + primary + expanded):
+                key = skill.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(skill)
+            required = merged[:12]
+            if required:
+                doc["required_skills"] = required
 
         overlap = compute_skill_overlap(user_skills, required)
 

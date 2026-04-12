@@ -494,6 +494,31 @@ def _requirement_focus_text(text: str) -> str:
     return " ".join(focused)
 
 
+def extract_requirement_text(
+    *,
+    description: str = "",
+    explicit_requirements: str = "",
+    limit_chars: int = 900,
+) -> str:
+    """
+    Return a compact requirements-focused text extracted from the post.
+
+    Preference order:
+    1) Explicit requirement fields from source payload (if present)
+    2) Requirement-like segments mined from description
+    """
+    explicit = normalize_text(explicit_requirements)
+    if explicit:
+        return explicit[:limit_chars]
+
+    focused = _requirement_focus_text(normalize_text(description))
+    if focused:
+        return focused[:limit_chars]
+
+    # Fallback to description slice so downstream extraction still has context.
+    return normalize_text(description)[:limit_chars]
+
+
 def _score_skill(skill_patterns: Iterable[re.Pattern[str]], text: str) -> int:
     score = 0
     for pattern in skill_patterns:
@@ -516,7 +541,7 @@ def extract_required_skills(
     if not combined:
         return []
 
-    focus = _requirement_focus_text(f"{req_text}. {desc_text}")
+    focus = extract_requirement_text(description=desc_text, explicit_requirements=req_text)
     focus_text = f"{title_text} {focus}".strip()
 
     scored: List[Tuple[str, int]] = []
